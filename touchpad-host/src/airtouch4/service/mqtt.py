@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +26,25 @@ class MqttConfig:
 
     @property
     def broker_host(self) -> str:
-        return self.host.strip() or "core-mosquitto"
+        return self.host.strip() or _env_first("MQTT_HOST", "MQTT_SERVICE_HOST") or "core-mosquitto"
+
+    @property
+    def broker_port(self) -> int:
+        raw = _env_first("MQTT_PORT", "MQTT_SERVICE_PORT")
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                return self.port
+        return self.port
+
+    @property
+    def broker_username(self) -> str:
+        return self.username.strip() or _env_first("MQTT_USERNAME", "MQTT_USER", "MQTT_SERVICE_USERNAME")
+
+    @property
+    def broker_password(self) -> str:
+        return self.password or _env_first("MQTT_PASSWORD", "MQTT_SERVICE_PASSWORD")
 
 
 class MqttStatePublisher:
@@ -41,7 +60,7 @@ class MqttStatePublisher:
             "enabled": self.config.enabled,
             "connected": self._connected,
             "host": self.config.broker_host if self.config.enabled else "",
-            "port": self.config.port,
+            "port": self.config.broker_port,
             "error": self._error,
         }
 
@@ -81,15 +100,16 @@ class MqttStatePublisher:
             return False
         try:
             client = mqtt.Client(client_id=self.config.client_id)
-            if self.config.username:
-                client.username_pw_set(self.config.username, self.config.password or None)
+            username = self.config.broker_username
+            if username:
+                client.username_pw_set(username, self.config.broker_password or None)
             client.will_set(f"{self.config.topic_prefix}/availability", "offline", retain=True)
-            client.connect(self.config.broker_host, self.config.port, keepalive=30)
+            client.connect(self.config.broker_host, self.config.broker_port, keepalive=30)
             client.loop_start()
             self._client = client
             self._connected = True
             self._error = None
-            LOG.info("MQTT connected to %s:%s", self.config.broker_host, self.config.port)
+            LOG.info("MQTT connected to %s:%s", self.config.broker_host, self.config.broker_port)
             return True
         except Exception as exc:  # pragma: no cover - live network path
             self._error = f"{type(exc).__name__}: {exc}"
@@ -184,3 +204,11 @@ class MqttStatePublisher:
         if value is None or self._client is None:
             return
         self._client.publish(topic, str(value), qos=0, retain=retain)
+
+
+def _env_first(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""

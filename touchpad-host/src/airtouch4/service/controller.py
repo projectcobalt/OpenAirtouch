@@ -142,7 +142,7 @@ class RuntimeController:
             "weather_poll_interval": self.config.weather_poll_interval,
             "mqtt_enabled": self.config.mqtt.enabled,
             "mqtt_host": self.config.mqtt.broker_host if self.config.mqtt.enabled else "",
-            "mqtt_port": self.config.mqtt.port,
+            "mqtt_port": self.config.mqtt.broker_port,
             "mqtt_discovery": self.config.mqtt.discovery,
             "mqtt_discovery_prefix": self.config.mqtt.discovery_prefix,
             "mqtt_topic_prefix": self.config.mqtt.topic_prefix,

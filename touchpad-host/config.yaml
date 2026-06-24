@@ -1,5 +1,5 @@
 name: AirTouch 4 Touchpad Host
-version: "0.1.10"
+version: "0.1.11"
 slug: airtouch4_touchpad_host
 description: Python host for the AirTouch 4 internal RS485 touchpad protocol.
 arch:
@@ -20,6 +20,8 @@ panel_icon: mdi:thermostat
 panel_title: AirTouch 4
 uart: true
 homeassistant_api: true
+services:
+  - mqtt:need
 ports:
   8099/tcp: null
 ports_description:
@@ -42,7 +44,7 @@ options:
   ui_theme: system
   weather_entity: ""
   weather_poll_interval: 60.0
-  mqtt_enabled: false
+  mqtt_enabled: true
   mqtt_host: ""
   mqtt_port: 1883
   mqtt_username: ""

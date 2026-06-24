@@ -144,22 +144,27 @@ INDEX_HTML = """<!doctype html>
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      align-items: center;
+      align-items: flex-start;
       justify-content: flex-end;
+    }
+    .theme-stack {
+      display: grid;
+      gap: 5px;
+      justify-items: stretch;
     }
     .weather-chip {
       display: none;
-      align-items: center;
-      gap: 7px;
-      min-height: 30px;
+      min-height: 26px;
       padding: 4px 9px;
       border: 1px solid rgba(255,255,255,.24);
       border-radius: 5px;
       background: rgba(255,255,255,.08);
       color: #fff;
       font-weight: 680;
+      text-align: center;
+      white-space: nowrap;
     }
-    .weather-chip.active { display: inline-flex; }
+    .weather-chip.active { display: block; }
     .nav button {
       min-height: 34px;
       border-color: rgba(255,255,255,.24);
@@ -379,12 +384,17 @@ INDEX_HTML = """<!doctype html>
       width: 54px;
       height: 54px;
       min-height: 54px;
+      max-width: 54px;
+      flex: 0 0 54px;
       padding: 0;
       border-radius: 999px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       line-height: 1;
+      white-space: nowrap;
+      font-size: 12px;
+      overflow: hidden;
     }
     .group-body .big {
       font-size: 24px;
@@ -566,8 +576,10 @@ INDEX_HTML = """<!doctype html>
     <h1 id="app-title">AirTouch 4</h1>
     <div class="header-actions">
       <div id="status" class="status"><span class="dot"></span><span>Connecting</span></div>
-      <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
-      <div id="weather-chip" class="weather-chip"></div>
+      <div class="theme-stack">
+        <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+        <div id="weather-chip" class="weather-chip"></div>
+      </div>
     </div>
     <nav class="nav" aria-label="Primary">
       <button type="button" class="active" data-view-button="control">Control</button>
@@ -832,9 +844,30 @@ INDEX_HTML = """<!doctype html>
       }
       const unit = weather.temperature_unit || "C";
       const tempText = weather.temperature === undefined || weather.temperature === null ? "" : `${weather.temperature} ${unit}`;
-      const name = weather.friendly_name || weather.entity_id || "Weather";
-      chip.textContent = [name, weather.state, tempText].filter(Boolean).join(" / ");
+      const humidityText = weather.humidity === undefined || weather.humidity === null ? "" : `${weather.humidity}%`;
+      const icon = weatherIcon(weather.state);
+      chip.textContent = [icon, tempText, humidityText].filter(Boolean).join(" ");
       chip.classList.add("active");
+    }
+
+    function weatherIcon(condition) {
+      const icons = {
+        "clear-night": "☾",
+        "cloudy": "☁",
+        "fog": "≋",
+        "hail": "◇",
+        "lightning": "⚡",
+        "lightning-rainy": "⚡",
+        "partlycloudy": "◐",
+        "pouring": "☂",
+        "rainy": "☂",
+        "snowy": "❄",
+        "snowy-rainy": "❄",
+        "sunny": "☀",
+        "windy": "≈",
+        "windy-variant": "≈"
+      };
+      return icons[String(condition || "").toLowerCase()] || "○";
     }
 
     function groupNamesFromBitmap(groups, low, high) {
@@ -1027,7 +1060,7 @@ INDEX_HTML = """<!doctype html>
               data-setpoint="${escapeHtml(status.setpoint ?? "")}"
               data-percentage="${escapeHtml(status.percentage ?? "")}"
               ${pending ? "disabled" : ""}
-            >${escapeHtml(pending ? "Sending" : "Power")}</button>
+            >${escapeHtml(pending ? "..." : "Power")}</button>
           </div>
           <div class="tile-actions">
             ${valueButtons}

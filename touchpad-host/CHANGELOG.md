@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.11
+
+- Fix the round zone Power button sizing and pending state.
+- Place the weather chip below the Theme control.
+- Show compact weather condition, temperature, and humidity only.
+- Enable MQTT publishing by default and declare the Mosquitto service dependency.
+
 ## 0.1.10
 
 - Add optional Home Assistant weather display in the app header.
