@@ -28,6 +28,7 @@ def create_app(controller: RuntimeController):
         controller.stop()
 
     @app.get("/api/health")
+    @app.get("//api/health", include_in_schema=False)
     def health() -> dict[str, Any]:
         return controller.health()
 
@@ -40,14 +41,17 @@ def create_app(controller: RuntimeController):
         return INDEX_HTML
 
     @app.get("/api/state")
+    @app.get("//api/state", include_in_schema=False)
     def state() -> dict[str, Any]:
         return controller.snapshot()
 
     @app.get("/api/events")
+    @app.get("//api/events", include_in_schema=False)
     def events() -> dict[str, Any]:
         return {"events": controller.recent_events()}
 
     @app.post("/api/command")
+    @app.post("//api/command", include_in_schema=False)
     async def command(body: dict[str, Any]) -> dict[str, Any]:
         action = str(body.get("action", ""))
         data = body.get("data", {})

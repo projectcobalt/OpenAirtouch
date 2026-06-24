@@ -318,6 +318,11 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
+    const API_ROOT = window.location.pathname.replace(/\\/+$/, "");
+
+    function apiPath(path) {
+      return `${API_ROOT}/api/${path}`;
+    }
 
     function text(value, fallback = "-") {
       return value === undefined || value === null || value === "" ? fallback : String(value);
@@ -486,9 +491,9 @@ INDEX_HTML = """<!doctype html>
     async function refresh() {
       try {
         const [health, state, events] = await Promise.all([
-          fetch("api/health").then((r) => r.json()),
-          fetch("api/state").then((r) => r.json()),
-          fetch("api/events").then((r) => r.json())
+          fetch(apiPath("health")).then((r) => r.json()),
+          fetch(apiPath("state")).then((r) => r.json()),
+          fetch(apiPath("events")).then((r) => r.json())
         ]);
         setStatus(health);
         renderState(state);

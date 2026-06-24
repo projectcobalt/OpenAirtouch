@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Fix UI API polling under Home Assistant ingress double-slash URLs.
+- Add double-slash API route aliases as a defensive fallback.
+- Log RX/TX bus frames to the add-on logger.
+- Default persistent JSONL bus logging to off.
+
 ## 0.1.3
 
 - Serve the ingress UI on both `/` and `//` to tolerate Home Assistant ingress

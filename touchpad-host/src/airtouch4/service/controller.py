@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import logging
 from collections import deque
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from ..session.queue import TransactionSpec
 from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, TcpSerialTransport
 
 TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
+LOG = logging.getLogger("airtouch4.service.controller")
 
 
 @dataclass(frozen=True)
@@ -151,18 +153,21 @@ class RuntimeController:
         if specs:
             runtime.enqueue(specs)
 
-    def _record_event(self, event: RuntimeEvent, logger: JsonlBusLogger) -> None:
+    def _record_event(self, event: RuntimeEvent, bus_logger: JsonlBusLogger) -> None:
         record = _event_record(event)
         with self._lock:
             self._events.append(record)
         if event.event == "rx" and event.packet is not None:
-            logger.log_rx(event.packet)
+            bus_logger.log_rx(event.packet)
+            LOG.info(_frame_log_line("rx", event))
         elif event.event == "tx" and event.packet is not None and event.wire is not None:
-            logger.log_tx(event.packet, event.wire)
+            bus_logger.log_tx(event.packet, event.wire)
+            LOG.info(_frame_log_line("tx", event))
         elif event.event == "transaction" and event.transaction is not None:
-            logger.write(event.transaction.to_record())
+            bus_logger.write(event.transaction.to_record())
         elif event.event == "status":
-            logger.write({"event": "runtime_status", "message": event.message})
+            bus_logger.write({"event": "runtime_status", "message": event.message})
+            LOG.info("runtime status %s", event.message)
 
     def _record_controller_error(self, exc: Exception) -> None:
         message = f"{type(exc).__name__}: {exc}"
@@ -209,3 +214,16 @@ def _event_record(event: RuntimeEvent) -> dict[str, Any]:
     if event.transaction is not None:
         record["transaction"] = event.transaction.to_record()
     return record
+
+
+def _frame_log_line(direction: str, event: RuntimeEvent) -> str:
+    packet = event.packet
+    if packet is None:
+        return f"bus {direction} packet=none"
+    return (
+        f"bus {direction} "
+        f"src=0x{packet.src:02X} dest=0x{packet.dest:02X} "
+        f"cmd=0x{packet.command:02X} {packet.command_name} "
+        f"id={packet.packet_id} len={len(packet.payload)} crc_ok={packet.crc_ok} "
+        f"payload={packet.payload.hex(' ').upper()}"
+    )
