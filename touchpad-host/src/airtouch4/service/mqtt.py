@@ -128,44 +128,42 @@ class MqttStatePublisher:
             base = ac.get("base") or {}
             name = base.get("name") or f"AC {int(ac_id) + 1}"
             object_id = f"airtouch4_ac_{int(ac_id) + 1}"
-            payload = {
-                "name": name,
-                "unique_id": f"{object_id}_climate",
-                "object_id": object_id,
-                "device": device,
-                "availability_topic": f"{self.config.topic_prefix}/availability",
-                "current_temperature_topic": f"{self.config.topic_prefix}/ac/{ac_id}/current_temperature",
-                "temperature_state_topic": f"{self.config.topic_prefix}/ac/{ac_id}/target_temperature",
-                "mode_state_topic": f"{self.config.topic_prefix}/ac/{ac_id}/mode",
-                "fan_mode_state_topic": f"{self.config.topic_prefix}/ac/{ac_id}/fan_mode",
-                "modes": ["off", "auto", "heat", "dry", "fan_only", "cool"],
-                "fan_modes": ["auto", "low", "medium", "high"],
-                "temperature_unit": "C",
-                "precision": 1.0,
-                "temp_step": 1.0,
-            }
-            self._publish_discovery_once("climate", object_id, payload)
+            self._publish_sensor_discovery(device, f"{object_id}_current_temperature", f"{name} Current Temperature", f"{self.config.topic_prefix}/ac/{ac_id}/current_temperature", "temperature", "°C")
+            self._publish_sensor_discovery(device, f"{object_id}_target_temperature", f"{name} Target Temperature", f"{self.config.topic_prefix}/ac/{ac_id}/target_temperature", "temperature", "°C")
+            self._publish_sensor_discovery(device, f"{object_id}_mode", f"{name} Mode", f"{self.config.topic_prefix}/ac/{ac_id}/mode")
+            self._publish_sensor_discovery(device, f"{object_id}_fan_mode", f"{name} Fan", f"{self.config.topic_prefix}/ac/{ac_id}/fan_mode")
         for group_id, group in sorted((state.get("active_groups") or state.get("groups") or {}).items(), key=lambda item: int(item[0])):
             status = group.get("status") or {}
-            if not status.get("has_sensor"):
-                continue
             name = group.get("name") or f"Zone {int(group_id) + 1}"
             object_id = f"airtouch4_zone_{int(group_id) + 1}"
-            payload = {
-                "name": name,
-                "unique_id": f"{object_id}_climate",
-                "object_id": object_id,
-                "device": device,
-                "availability_topic": f"{self.config.topic_prefix}/availability",
-                "current_temperature_topic": f"{self.config.topic_prefix}/zone/{group_id}/current_temperature",
-                "temperature_state_topic": f"{self.config.topic_prefix}/zone/{group_id}/target_temperature",
-                "mode_state_topic": f"{self.config.topic_prefix}/zone/{group_id}/mode",
-                "modes": ["off", "heat_cool"],
-                "temperature_unit": "C",
-                "precision": 1.0,
-                "temp_step": 1.0,
-            }
-            self._publish_discovery_once("climate", object_id, payload)
+            if status.get("has_sensor"):
+                self._publish_sensor_discovery(device, f"{object_id}_current_temperature", f"{name} Current Temperature", f"{self.config.topic_prefix}/zone/{group_id}/current_temperature", "temperature", "°C")
+                self._publish_sensor_discovery(device, f"{object_id}_target_temperature", f"{name} Target Temperature", f"{self.config.topic_prefix}/zone/{group_id}/target_temperature", "temperature", "°C")
+            self._publish_sensor_discovery(device, f"{object_id}_mode", f"{name} Mode", f"{self.config.topic_prefix}/zone/{group_id}/mode")
+            self._publish_sensor_discovery(device, f"{object_id}_percentage", f"{name} Damper", f"{self.config.topic_prefix}/zone/{group_id}/percentage", None, "%")
+
+    def _publish_sensor_discovery(
+        self,
+        device: dict[str, Any],
+        object_id: str,
+        name: str,
+        state_topic: str,
+        device_class: str | None = None,
+        unit: str | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {
+            "name": name,
+            "unique_id": object_id,
+            "object_id": object_id,
+            "device": device,
+            "availability_topic": f"{self.config.topic_prefix}/availability",
+            "state_topic": state_topic,
+        }
+        if device_class:
+            payload["device_class"] = device_class
+        if unit:
+            payload["unit_of_measurement"] = unit
+        self._publish_discovery_once("sensor", object_id, payload)
 
     def _publish_entities(self, state: dict[str, Any]) -> None:
         mode_names = {0: "auto", 1: "heat", 2: "dry", 3: "fan_only", 4: "cool"}

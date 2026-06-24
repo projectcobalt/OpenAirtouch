@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.12
+
+- Publish MQTT discovery for read-only AirTouch AC and zone state sensors.
+
 ## 0.1.11
 
 - Fix the round zone Power button sizing and pending state.
