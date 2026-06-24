@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Serve the ingress UI on both `/` and `//` to tolerate Home Assistant ingress
+  double-slash entry URLs.
+
 ## 0.1.2
 
 - Rework the ingress UI around group/zone tiles as the primary surface.

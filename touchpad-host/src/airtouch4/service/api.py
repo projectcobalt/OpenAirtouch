@@ -35,6 +35,10 @@ def create_app(controller: RuntimeController):
     def index() -> str:
         return INDEX_HTML
 
+    @app.get("//", response_class=HTMLResponse)
+    def index_double_slash() -> str:
+        return INDEX_HTML
+
     @app.get("/api/state")
     def state() -> dict[str, Any]:
         return controller.snapshot()
