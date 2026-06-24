@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.16
+
+- Fix add-on packaging for Home Assistant indoor sensor reads.
+- Add config labels for optional remote AC error lookup.
+
+## 0.1.15
+
+- Add APK-derived AC error display tables.
+- Add optional remote AC error lookup with persistent local caching.
+- Add structured builders for APK-style parameters, preference, and service
+  payloads.
+
 ## 0.1.12
 
 - Publish MQTT discovery for read-only AirTouch AC and zone state sensors.

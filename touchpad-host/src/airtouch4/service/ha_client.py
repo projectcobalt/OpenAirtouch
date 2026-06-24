@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 @dataclass(frozen=True)
 class HomeAssistantApiConfig:
     weather_entity: str = ""
+    indoor_temperature_entity: str = ""
+    indoor_humidity_entity: str = ""
     timeout: float = 3.0
 
 
@@ -42,6 +44,38 @@ class HomeAssistantApiClient:
             "wind_speed_unit": attrs.get("wind_speed_unit"),
         }
 
+    def indoor_snapshot(self) -> dict[str, Any] | None:
+        temperature_entity = self.config.indoor_temperature_entity.strip()
+        humidity_entity = self.config.indoor_humidity_entity.strip()
+        if not temperature_entity and not humidity_entity:
+            return None
+
+        snapshot: dict[str, Any] = {
+            "temperature_entity_id": temperature_entity,
+            "humidity_entity_id": humidity_entity,
+            "temperature": None,
+            "humidity": None,
+            "temperature_unit": "C",
+            "humidity_unit": "%",
+        }
+        if temperature_entity:
+            state = self.read_state(temperature_entity)
+            attrs = state.get("attributes", {})
+            snapshot.update({
+                "temperature": _float_or_none(state.get("state")),
+                "temperature_unit": attrs.get("unit_of_measurement") or "C",
+                "temperature_name": attrs.get("friendly_name"),
+            })
+        if humidity_entity:
+            state = self.read_state(humidity_entity)
+            attrs = state.get("attributes", {})
+            snapshot.update({
+                "humidity": _float_or_none(state.get("state")),
+                "humidity_unit": attrs.get("unit_of_measurement") or "%",
+                "humidity_name": attrs.get("friendly_name"),
+            })
+        return snapshot
+
     def read_state(self, entity_id: str) -> dict[str, Any]:
         token = os.environ.get("SUPERVISOR_TOKEN", "")
         if not token:
@@ -56,3 +90,10 @@ class HomeAssistantApiClient:
                 return json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError) as exc:
             raise RuntimeError(f"could not read {entity_id}: {exc}") from exc
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

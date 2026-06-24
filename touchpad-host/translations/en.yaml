@@ -47,9 +47,15 @@ configuration:
   weather_entity:
     name: Weather entity
     description: Optional Home Assistant weather entity to display in the app header, for example weather.home.
+  indoor_temperature_entity:
+    name: Indoor temperature entity
+    description: Optional Home Assistant temperature sensor entity to display under the outside weather chip.
+  indoor_humidity_entity:
+    name: Indoor humidity entity
+    description: Optional Home Assistant humidity sensor entity to display under the outside weather chip.
   weather_poll_interval:
     name: Weather poll interval
-    description: Seconds between local Home Assistant weather reads.
+    description: Seconds between local Home Assistant weather and indoor sensor reads.
   mqtt_enabled:
     name: MQTT publishing
     description: Publish AirTouch state and read-only climate discovery to MQTT.
@@ -77,6 +83,18 @@ configuration:
   mqtt_publish_interval:
     name: MQTT publish interval
     description: Seconds between MQTT state publishes.
+  remote_error_resolution:
+    name: Remote error lookup
+    description: Resolve AC fault descriptions through the AirTouch update endpoint after local APK tables are checked.
+  remote_error_cache_days:
+    name: Error cache days
+    description: Days to keep successful remote fault descriptions in persistent add-on storage.
+  remote_error_device_id:
+    name: Error lookup device ID
+    description: Optional device ID sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
+  remote_error_serial:
+    name: Error lookup serial
+    description: Optional serial number sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
   log_level:
     name: Log level
     description: Uvicorn service log level.
