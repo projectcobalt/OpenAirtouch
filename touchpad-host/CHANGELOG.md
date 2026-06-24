@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.10
+
+- Add optional Home Assistant weather display in the app header.
+- Add MQTT state publishing with Mosquitto-friendly defaults and read-only
+  Home Assistant climate discovery for ACs and sensor-backed zones.
+- Refine the Control page zone layout with a round Power button beside the
+  zone readings and denser factory-inspired zone rows.
+- Add a dynamic AirTouch 4/5 title and current-error strip on the Control page.
+
 ## 0.1.9
 
 - Rework the ingress UI into three app views: Control, Favourites & Programs,

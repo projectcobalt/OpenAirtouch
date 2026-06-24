@@ -16,6 +16,8 @@ from ..live_log import JsonlBusLogger
 from ..runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent, TransportLike
 from ..session.queue import TransactionSpec
 from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, TcpSerialTransport
+from .ha_client import HomeAssistantApiClient, HomeAssistantApiConfig
+from .mqtt import MqttConfig, MqttStatePublisher
 
 TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
 LOG = logging.getLogger("uvicorn.error")
@@ -33,6 +35,10 @@ class RuntimeControllerConfig:
     loop_sleep: float = 0.02
     reconnect_interval: float = 5.0
     event_history: int = 200
+    ui_theme: str = "system"
+    weather: HomeAssistantApiConfig = HomeAssistantApiConfig()
+    weather_poll_interval: float = 60.0
+    mqtt: MqttConfig = MqttConfig()
 
 
 class RuntimeController:
@@ -54,6 +60,12 @@ class RuntimeController:
         self._command_queue: queue.Queue[TransactionSpec] = queue.Queue()
         self._status = "stopped"
         self._error: str | None = None
+        self._weather: dict[str, Any] | None = None
+        self._weather_error: str | None = None
+        self._next_weather_poll = 0.0
+        self._next_mqtt_publish = 0.0
+        self._ha_client = HomeAssistantApiClient(config.weather)
+        self._mqtt = MqttStatePublisher(config.mqtt)
 
     def start(self) -> None:
         with self._lock:
@@ -88,6 +100,14 @@ class RuntimeController:
                     "config": self.public_config(),
                 },
                 "runtime": runtime_snapshot,
+                "integrations": {
+                    "weather": {
+                        "entity_id": self.config.weather.weather_entity,
+                        "state": self._weather,
+                        "error": self._weather_error,
+                    },
+                    "mqtt": self._mqtt.status(),
+                },
             }
 
     def health(self) -> dict[str, Any]:
@@ -117,6 +137,16 @@ class RuntimeController:
             "tcp_port": self.config.tcp_port,
             "reconnect_interval": self.config.reconnect_interval,
             "bus_log": str(self.config.bus_log) if self.config.bus_log is not None else None,
+            "ui_theme": self.config.ui_theme,
+            "weather_entity": self.config.weather.weather_entity,
+            "weather_poll_interval": self.config.weather_poll_interval,
+            "mqtt_enabled": self.config.mqtt.enabled,
+            "mqtt_host": self.config.mqtt.broker_host if self.config.mqtt.enabled else "",
+            "mqtt_port": self.config.mqtt.port,
+            "mqtt_discovery": self.config.mqtt.discovery,
+            "mqtt_discovery_prefix": self.config.mqtt.discovery_prefix,
+            "mqtt_topic_prefix": self.config.mqtt.topic_prefix,
+            "mqtt_publish_interval": self.config.mqtt.publish_interval,
         }
 
     def _run(self) -> None:
@@ -136,12 +166,15 @@ class RuntimeController:
                         self._drain_commands(runtime)
                         for event in runtime.step():
                             self._record_event(event, logger)
+                        self._poll_weather()
+                        self._publish_mqtt()
                         time.sleep(self.config.loop_sleep)
             except Exception as exc:  # pragma: no cover - exercised in live runs
                 self._record_controller_error(exc)
                 self._sleep_before_reconnect()
         with self._lock:
             self._status = "stopped"
+        self._mqtt.stop()
 
     def _drain_commands(self, runtime: AirTouchRuntime) -> None:
         specs = []
@@ -179,6 +212,32 @@ class RuntimeController:
                 "message": message,
                 "state_changed": False,
             })
+
+    def _poll_weather(self) -> None:
+        entity = self.config.weather.weather_entity.strip()
+        if not entity:
+            return
+        now = time.monotonic()
+        if now < self._next_weather_poll:
+            return
+        self._next_weather_poll = now + max(10.0, self.config.weather_poll_interval)
+        try:
+            weather = self._ha_client.weather_snapshot()
+            with self._lock:
+                self._weather = weather
+                self._weather_error = None
+        except Exception as exc:  # pragma: no cover - live HA API path
+            with self._lock:
+                self._weather_error = f"{type(exc).__name__}: {exc}"
+
+    def _publish_mqtt(self) -> None:
+        if not self.config.mqtt.enabled:
+            return
+        now = time.monotonic()
+        if now < self._next_mqtt_publish:
+            return
+        self._next_mqtt_publish = now + max(2.0, self.config.mqtt.publish_interval)
+        self._mqtt.publish(self.snapshot())
 
     def _sleep_before_reconnect(self) -> None:
         deadline = time.monotonic() + max(0.1, self.config.reconnect_interval)

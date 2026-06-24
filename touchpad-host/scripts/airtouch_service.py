@@ -15,6 +15,8 @@ if str(SRC) not in sys.path:
 from airtouch4.runtime import RuntimeConfig
 from airtouch4.service.api import create_app
 from airtouch4.service.controller import RuntimeController, RuntimeControllerConfig
+from airtouch4.service.ha_client import HomeAssistantApiConfig
+from airtouch4.service.mqtt import MqttConfig
 from airtouch4.session.touchscreen import parse_hex_payload
 from airtouch4.payloads.common import encode_internal_temperature
 
@@ -36,6 +38,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--heartbeat-payload", default="")
     parser.add_argument("--source-address", default="auto", help="Preferred touchpad source address: auto, 0x90, or 0x91.")
     parser.add_argument("--force-source-address", action="store_true")
+    parser.add_argument("--ui-theme", default="system", choices=("system", "light", "dark"))
+    parser.add_argument("--weather-entity", default="")
+    parser.add_argument("--weather-poll-interval", type=float, default=60.0)
+    parser.add_argument("--mqtt-enabled", action="store_true")
+    parser.add_argument("--mqtt-host", default="", help="MQTT broker host. Blank defaults to the HA Mosquitto add-on host core-mosquitto.")
+    parser.add_argument("--mqtt-port", type=int, default=1883)
+    parser.add_argument("--mqtt-username", default="")
+    parser.add_argument("--mqtt-password", default="")
+    parser.add_argument("--mqtt-discovery", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--mqtt-discovery-prefix", default="homeassistant")
+    parser.add_argument("--mqtt-topic-prefix", default="airtouch4")
+    parser.add_argument("--mqtt-publish-interval", type=float, default=10.0)
     parser.add_argument("--log-level", default="info", choices=("debug", "info", "warning", "error"))
     return parser
 
@@ -83,6 +97,20 @@ def main(argv: list[str] | None = None) -> int:
             reconnect_interval=args.reconnect_interval,
             runtime=runtime_config,
             bus_log=args.bus_log,
+            ui_theme=args.ui_theme,
+            weather=HomeAssistantApiConfig(weather_entity=args.weather_entity),
+            weather_poll_interval=args.weather_poll_interval,
+            mqtt=MqttConfig(
+                enabled=args.mqtt_enabled,
+                host=args.mqtt_host,
+                port=args.mqtt_port,
+                username=args.mqtt_username,
+                password=args.mqtt_password,
+                discovery=args.mqtt_discovery,
+                discovery_prefix=args.mqtt_discovery_prefix,
+                topic_prefix=args.mqtt_topic_prefix,
+                publish_interval=args.mqtt_publish_interval,
+            ),
         )
     )
     uvicorn.run(create_app(controller), host=args.host, port=args.http_port, log_level=args.log_level)

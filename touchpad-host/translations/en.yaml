@@ -41,6 +41,42 @@ configuration:
   bus_log:
     name: Bus log
     description: Write RX, TX, status, and transaction events to persistent add-on storage.
+  ui_theme:
+    name: UI theme
+    description: Default display theme for the ingress UI. System follows the browser or Home Assistant theme, and the header toggle can override it locally.
+  weather_entity:
+    name: Weather entity
+    description: Optional Home Assistant weather entity to display in the app header, for example weather.home.
+  weather_poll_interval:
+    name: Weather poll interval
+    description: Seconds between local Home Assistant weather reads.
+  mqtt_enabled:
+    name: MQTT publishing
+    description: Publish AirTouch state and read-only climate discovery to MQTT.
+  mqtt_host:
+    name: MQTT host
+    description: MQTT broker host. Leave blank to use the Mosquitto app default host core-mosquitto.
+  mqtt_port:
+    name: MQTT port
+    description: MQTT broker port.
+  mqtt_username:
+    name: MQTT username
+    description: Optional MQTT username.
+  mqtt_password:
+    name: MQTT password
+    description: Optional MQTT password.
+  mqtt_discovery:
+    name: MQTT discovery
+    description: Publish Home Assistant discovery for read-only AirTouch climate entities.
+  mqtt_discovery_prefix:
+    name: MQTT discovery prefix
+    description: Home Assistant MQTT discovery prefix.
+  mqtt_topic_prefix:
+    name: MQTT topic prefix
+    description: Base topic used for AirTouch state publishing.
+  mqtt_publish_interval:
+    name: MQTT publish interval
+    description: Seconds between MQTT state publishes.
   log_level:
     name: Log level
     description: Uvicorn service log level.

@@ -61,6 +61,8 @@ class AirTouchState:
         elif kind == "grouping":
             for record in decoded.get("records", []):
                 self._merge(self.groups, record.get("group"), {"grouping": record})
+        elif kind in {"balance", "balance_control"}:
+            self.system["balance"] = decoded
         elif kind == "spill":
             self.system["spill"] = decoded
             for group in decoded.get("spill_groups_zero_based", []):
@@ -98,12 +100,20 @@ class AirTouchState:
             page = decoded.get("page")
             if page is not None:
                 self.password[f"page_{page}"] = decoded
+        elif kind == "dialog_message":
+            self.system["dialog_message"] = decoded
+        elif kind == "clear_notification":
+            self.system["clear_notification"] = decoded
         elif kind == "led_response":
             self.last_led = decoded
         elif kind == "main_display_new":
             self.system["main_display"] = decoded
         elif kind == "turbo_group":
             self.system["turbo_group"] = decoded
+        elif kind == "expanded":
+            self.system["expanded"] = decoded
+        elif kind in {"debug_info", "gateway_info"}:
+            self.system[kind] = decoded
 
     def snapshot(self) -> dict[str, Any]:
         return {

@@ -25,6 +25,30 @@ INDEX_HTML = """<!doctype html>
       --accent-soft: #e6f4f7;
       --cool: #2d6cdf;
       --warm: #b45f06;
+      --header: #16212c;
+      --header-ink: #ffffff;
+      --active-bg: #0f6e8e;
+      --active-ink: #ffffff;
+    }
+    body[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #10161c;
+      --panel: #17212a;
+      --panel-soft: #1d2933;
+      --ink: #e7eef4;
+      --muted: #9babba;
+      --line: #33414d;
+      --ok: #42b883;
+      --bad: #ff6b5f;
+      --warn: #d8a63c;
+      --accent: #57b6d4;
+      --accent-soft: #173a46;
+      --cool: #73a7ff;
+      --warm: #f0a650;
+      --header: #0b1117;
+      --header-ink: #f3f8fb;
+      --active-bg: #57b6d4;
+      --active-ink: #071217;
     }
     * { box-sizing: border-box; }
     body {
@@ -39,17 +63,29 @@ INDEX_HTML = """<!doctype html>
       gap: 14px;
       align-items: center;
       padding: 14px 18px 10px;
-      background: #16212c;
-      color: #fff;
+      background: var(--header);
+      color: var(--header-ink);
       border-bottom: 3px solid var(--accent);
     }
     h1 { margin: 0; font-size: 21px; font-weight: 720; }
     h2 { margin: 0 0 10px; font-size: 15px; font-weight: 720; }
     h3 { margin: 0 0 8px; font-size: 14px; font-weight: 720; }
+    .section-title {
+      display: flex;
+      gap: 7px;
+      align-items: baseline;
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 720;
+    }
+    .section-title strong {
+      font-size: 24px;
+      line-height: 1;
+    }
     main {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      gap: 14px;
+      gap: 10px;
       padding: 14px;
     }
     section {
@@ -82,6 +118,48 @@ INDEX_HTML = """<!doctype html>
       flex-wrap: wrap;
       gap: 8px;
     }
+    .error-strip {
+      display: none;
+      min-height: 30px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--warn) 36%, var(--line));
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--warn) 11%, var(--panel));
+      color: var(--ink);
+    }
+    .error-strip.active { display: block; }
+    .error-track {
+      display: inline-flex;
+      gap: 28px;
+      min-width: 100%;
+      padding: 6px 10px;
+      white-space: nowrap;
+      animation: ticker 26s linear infinite;
+    }
+    @keyframes ticker {
+      from { transform: translateX(100%); }
+      to { transform: translateX(-100%); }
+    }
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .weather-chip {
+      display: none;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 4px 9px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 5px;
+      background: rgba(255,255,255,.08);
+      color: #fff;
+      font-weight: 680;
+    }
+    .weather-chip.active { display: inline-flex; }
     .nav button {
       min-height: 34px;
       border-color: rgba(255,255,255,.24);
@@ -89,13 +167,43 @@ INDEX_HTML = """<!doctype html>
       color: #fff;
     }
     .nav button.active {
-      background: #fff;
-      color: var(--ink);
-      border-color: #fff;
+      background: var(--active-bg);
+      color: var(--active-ink);
+      border-color: var(--active-bg);
+      box-shadow: inset 0 -3px 0 rgba(255,255,255,.35);
+    }
+    .theme-toggle {
+      min-width: 92px;
+      border-color: rgba(255,255,255,.24);
+      background: rgba(255,255,255,.08);
+      color: #fff;
     }
     .view { display: none; }
     .view.active { display: grid; gap: 14px; }
-    .control-grid { display: grid; gap: 14px; }
+    .subnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .subnav button {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--ink);
+    }
+    .subnav button.active {
+      border-color: var(--accent);
+      background: var(--active-bg);
+      color: var(--active-ink);
+      box-shadow: inset 0 -3px 0 rgba(255,255,255,.35);
+    }
+    .subview { display: none; }
+    .subview.active { display: grid; gap: 14px; }
+    .control-grid {
+      display: grid;
+      grid-template-columns: minmax(500px, 7fr) minmax(310px, 3fr);
+      gap: 14px;
+      align-items: start;
+    }
     .control-head {
       display: grid;
       grid-template-columns: minmax(0, .88fr) minmax(320px, 1.12fr);
@@ -113,7 +221,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 9px;
-      background: #fff;
+      background: var(--panel);
       color: var(--ink);
       text-align: left;
       display: grid;
@@ -124,6 +232,7 @@ INDEX_HTML = """<!doctype html>
       border-color: var(--accent);
       background: var(--accent-soft);
       color: var(--ink);
+      box-shadow: inset 4px 0 0 var(--accent);
     }
     .ac-board {
       display: grid;
@@ -134,14 +243,14 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 14px;
-      background: linear-gradient(180deg, #f8fbfc 0%, #fff 82%);
+      background: linear-gradient(180deg, var(--panel-soft) 0%, var(--panel) 82%);
       display: grid;
       gap: 14px;
       min-height: 260px;
     }
     .ac-panel.on {
       border-color: #87c7b0;
-      background: linear-gradient(180deg, #f1fbf7 0%, #fff 82%);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--ok) 11%, var(--panel)) 0%, var(--panel) 82%);
     }
     .ac-top {
       display: grid;
@@ -160,7 +269,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 10px;
-      background: #fff;
+      background: var(--panel);
     }
     .label {
       color: var(--muted);
@@ -192,7 +301,7 @@ INDEX_HTML = """<!doctype html>
     }
     .groups-board {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       gap: 10px;
     }
     .zone-toolbar {
@@ -209,31 +318,42 @@ INDEX_HTML = """<!doctype html>
       gap: 8px;
     }
     .group-tile {
-      min-height: 190px;
+      min-height: 112px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 12px;
-      background: #fff;
+      padding: 10px;
+      background: var(--panel);
       display: grid;
-      grid-template-rows: auto 1fr auto auto;
+      grid-template-columns: minmax(150px, .62fr) auto minmax(230px, 1fr) auto;
       gap: 10px;
+      align-items: center;
     }
     .group-tile.on {
       border-color: #86c6b0;
-      background: linear-gradient(180deg, #f4fbf8 0%, #fff 76%);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--ok) 10%, var(--panel)) 0%, var(--panel) 76%);
+    }
+    .group-tile.off {
+      background: color-mix(in srgb, var(--panel) 72%, var(--bg));
+    }
+    .group-tile.off .group-name,
+    .group-tile.off .group-num {
+      color: var(--muted);
+    }
+    .group-tile.off .group-body,
+    .group-tile.off .tile-foot {
+      opacity: .48;
     }
     .group-tile.spill {
       border-color: #dec879;
-      background: linear-gradient(180deg, #fffbea 0%, #fff 76%);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 14%, var(--panel)) 0%, var(--panel) 76%);
     }
     .group-head {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: start;
+      gap: 3px;
+      align-items: center;
     }
     .group-name {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 780;
       overflow-wrap: anywhere;
     }
@@ -241,15 +361,38 @@ INDEX_HTML = """<!doctype html>
       color: var(--muted);
       font-size: 12px;
       font-weight: 650;
-      margin-top: 2px;
+      text-transform: uppercase;
     }
     .group-body {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      grid-template-columns: minmax(96px, 1fr) minmax(96px, 1fr) minmax(150px, 1.45fr);
+      gap: 8px;
       align-content: center;
+      align-items: center;
     }
-    .damper { grid-column: 1 / -1; }
+    .group-body .reading {
+      padding: 8px;
+      min-height: 66px;
+      height: 100%;
+    }
+    .power-button {
+      width: 54px;
+      height: 54px;
+      min-height: 54px;
+      padding: 0;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .group-body .big {
+      font-size: 24px;
+    }
+    .group-body .small-value {
+      font-size: 18px;
+    }
+    .damper { min-width: 0; }
     .bar {
       height: 8px;
       border-radius: 999px;
@@ -262,30 +405,36 @@ INDEX_HTML = """<!doctype html>
       width: 0%;
       background: var(--accent);
     }
+    .zone-slider {
+      width: 100%;
+      accent-color: var(--accent);
+      margin: 8px 0 0;
+    }
     .tile-foot {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      min-height: 24px;
+      min-height: 22px;
       align-items: center;
     }
     .tile-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       align-items: center;
       justify-content: flex-end;
-      min-height: 34px;
+      min-width: 128px;
     }
     .pill {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 24px;
-      padding: 2px 9px;
+      min-height: 22px;
+      padding: 2px 8px;
       border-radius: 999px;
       border: 1px solid var(--line);
       color: var(--muted);
-      background: #fff;
+      background: var(--panel);
       font-size: 12px;
       font-weight: 680;
       white-space: nowrap;
@@ -308,18 +457,19 @@ INDEX_HTML = """<!doctype html>
     button:disabled { cursor: progress; opacity: .62; }
     button.secondary {
       border-color: var(--line);
-      background: #fff;
+      background: var(--panel);
       color: var(--ink);
     }
     button.option {
       border-color: var(--line);
-      background: #fff;
+      background: var(--panel);
       color: var(--ink);
     }
     button.option.active {
       border-color: var(--accent);
-      background: var(--accent-soft);
-      color: var(--accent);
+      background: var(--active-bg);
+      color: var(--active-ink);
+      box-shadow: inset 0 -3px 0 rgba(255,255,255,.35);
     }
     .split {
       display: grid;
@@ -384,10 +534,17 @@ INDEX_HTML = """<!doctype html>
       padding: 8px;
     }
     @media (max-width: 1040px) {
+      .control-grid,
       .control-head,
       .split,
       .service-grid {
         grid-template-columns: 1fr;
+      }
+      .group-tile {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .group-body {
+        grid-template-columns: 1fr 1fr minmax(160px, 1.2fr);
       }
     }
     @media (max-width: 620px) {
@@ -399,14 +556,19 @@ INDEX_HTML = """<!doctype html>
       .group-body {
         grid-template-columns: 1fr 1fr;
       }
+      .damper { grid-column: 1 / -1; }
       .groups-board { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>AirTouch 4</h1>
-    <div id="status" class="status"><span class="dot"></span><span>Connecting</span></div>
+    <h1 id="app-title">AirTouch 4</h1>
+    <div class="header-actions">
+      <div id="status" class="status"><span class="dot"></span><span>Connecting</span></div>
+      <button type="button" id="theme-toggle" class="theme-toggle">Theme</button>
+      <div id="weather-chip" class="weather-chip"></div>
+    </div>
     <nav class="nav" aria-label="Primary">
       <button type="button" class="active" data-view-button="control">Control</button>
       <button type="button" data-view-button="programs">Favourites & Programs</button>
@@ -415,38 +577,75 @@ INDEX_HTML = """<!doctype html>
   </header>
   <main>
     <div id="view-control" class="view active">
+      <div id="error-strip" class="error-strip" aria-live="polite"><div id="error-track" class="error-track"></div></div>
       <div class="control-grid">
+        <section>
+          <div class="section-title"><strong id="zone-count">0</strong><span>Zones</span></div>
+          <div class="zone-toolbar">
+            <div class="zone-pages" id="zone-pages"></div>
+          </div>
+          <div class="groups-board" id="groups"></div>
+        </section>
         <section>
           <h2>Air Conditioner</h2>
           <div class="ac-selector" id="ac-selector"></div>
           <div class="ac-board" id="acs"></div>
         </section>
-        <section>
-          <h2>Zones</h2>
-          <div class="zone-toolbar">
-            <div class="muted" id="zone-context"></div>
-            <div class="zone-pages" id="zone-pages"></div>
-          </div>
-          <div class="groups-board" id="groups"></div>
-        </section>
       </div>
     </div>
 
     <div id="view-programs" class="view">
-      <div class="split">
+      <div class="subnav" aria-label="Favourites and programs">
+        <button type="button" class="active" data-subview-button="programs" data-subview="favourites">Favourites</button>
+        <button type="button" data-subview-button="programs" data-subview="program-list">Programs</button>
+        <button type="button" data-subview-button="programs" data-subview="ac-timer">AC Timer</button>
+        <button type="button" data-subview-button="programs" data-subview="program-options">Options</button>
+        <button type="button" data-subview-button="programs" data-subview="program-summary">Summary</button>
+      </div>
+      <div id="programs-favourites" class="subview active">
         <section>
           <h2>Favourites</h2>
           <div class="cards" id="favourites"></div>
         </section>
+      </div>
+      <div id="programs-program-list" class="subview">
         <section>
           <h2>Programs</h2>
           <div class="cards" id="programs"></div>
         </section>
       </div>
+      <div id="programs-ac-timer" class="subview">
+        <section>
+          <h2>AC Timer</h2>
+          <div class="cards" id="ac-timers"></div>
+        </section>
+      </div>
+      <div id="programs-program-options" class="subview">
+        <section>
+          <h2>Options</h2>
+          <div class="json" id="program-options">{}</div>
+        </section>
+      </div>
+      <div id="programs-program-summary" class="subview">
+        <section>
+          <h2>Summary</h2>
+          <div class="json" id="program-summary">{}</div>
+        </section>
+      </div>
     </div>
 
     <div id="view-service" class="view">
-      <div class="service-grid">
+      <div class="subnav" aria-label="Service pages">
+        <button type="button" class="active" data-subview-button="service" data-subview="sensors">Sensors</button>
+        <button type="button" data-subview-button="service" data-subview="grouping">Grouping</button>
+        <button type="button" data-subview-button="service" data-subview="spill">Spill</button>
+        <button type="button" data-subview-button="service" data-subview="balance">Balance</button>
+        <button type="button" data-subview-button="service" data-subview="ac-setup">AC Setup</button>
+        <button type="button" data-subview-button="service" data-subview="parameters">Parameters</button>
+        <button type="button" data-subview-button="service" data-subview="system">System Info</button>
+        <button type="button" data-subview-button="service" data-subview="diagnostics">Diagnostics</button>
+      </div>
+      <div id="service-sensors" class="subview active">
         <section>
           <h2>Sensors</h2>
           <table>
@@ -454,10 +653,47 @@ INDEX_HTML = """<!doctype html>
             <tbody id="sensors"></tbody>
           </table>
         </section>
+      </div>
+      <div id="service-grouping" class="subview">
         <section>
-          <h2>Setup</h2>
+          <h2>Grouping</h2>
+          <div class="cards" id="grouping"></div>
+        </section>
+      </div>
+      <div id="service-spill" class="subview">
+        <section>
+          <h2>Spill</h2>
+          <div class="cards" id="spill"></div>
+        </section>
+      </div>
+      <div id="service-balance" class="subview">
+        <section>
+          <h2>Balance</h2>
+          <table>
+            <thead><tr><th>Zone</th><th>Set</th><th>Motor</th><th>State</th></tr></thead>
+            <tbody id="balance"></tbody>
+          </table>
+        </section>
+      </div>
+      <div id="service-ac-setup" class="subview">
+        <section>
+          <h2>AC Setup</h2>
+          <div class="cards" id="ac-setup"></div>
+        </section>
+      </div>
+      <div id="service-parameters" class="subview">
+        <section>
+          <h2>Parameters</h2>
+          <div class="json" id="parameters">{}</div>
+        </section>
+      </div>
+      <div id="service-system" class="subview">
+        <section>
+          <h2>System Info</h2>
           <div class="json" id="system">{}</div>
         </section>
+      </div>
+      <div id="service-diagnostics" class="subview">
         <section class="diagnostics">
           <h2>Diagnostics</h2>
           <div class="cards" id="metrics"></div>
@@ -471,12 +707,16 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const API_ROOT = window.location.pathname.replace(/\\/+$/, "");
+    const API_ROOT = window.location.pathname.replace(new RegExp("/+$"), "");
     const pendingGroups = new Set();
     const pendingAcs = new Set();
     const pendingFavourites = new Set();
+    const THEME_KEY = "airtouch4.uiTheme";
+    const themeLabels = {system: "System", light: "Light", dark: "Dark"};
     let selectedAc = 0;
     let zonePage = 0;
+    let configuredTheme = "system";
+    let selectedTheme = localStorage.getItem(THEME_KEY) || "system";
 
     function apiPath(path) {
       return `${API_ROOT}/api/${path}`;
@@ -504,6 +744,10 @@ INDEX_HTML = """<!doctype html>
       return `<div class="card"><div class="label">${escapeHtml(label)}</div><div class="small-value">${escapeHtml(value)}</div></div>`;
     }
 
+    function infoCard(title, details, footer = "") {
+      return `<article class="card"><div class="card-title">${escapeHtml(title)}</div><div class="muted">${escapeHtml(details)}</div>${footer}</article>`;
+    }
+
     function pct(value) {
       const num = Number(value);
       if (!Number.isFinite(num)) return null;
@@ -514,6 +758,17 @@ INDEX_HTML = """<!doctype html>
       return value === undefined || value === null ? "-" : `${value} C`;
     }
 
+    function themeToApply() {
+      const theme = selectedTheme === "system" ? configuredTheme : selectedTheme;
+      if (theme === "dark" || theme === "light") return theme;
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    function applyTheme() {
+      document.body.dataset.theme = themeToApply();
+      $("theme-toggle").textContent = themeLabels[selectedTheme] || "Theme";
+    }
+
     function modeName(value) {
       const modes = {0: "auto", 1: "heat", 2: "dry", 3: "fan", 4: "cool", 7: "-"};
       return modes[value] || text(value);
@@ -522,6 +777,64 @@ INDEX_HTML = """<!doctype html>
     function fanName(value) {
       const fans = {0: "auto", 1: "low", 2: "med", 3: "high", 7: "-"};
       return fans[value] || text(value);
+    }
+
+    function detectAirTouchModel(state) {
+      const system = state.system || {};
+      const fields = [
+        system.system_name,
+        system.device_id,
+        system.hardware_version_raw,
+        system.firmware_version_raw,
+        system.boot_version_raw,
+        system.version_or_flags,
+        system.gateway_info && system.gateway_info.text,
+        system.debug_info && system.debug_info.text,
+        system.expanded && system.expanded.software_version
+      ].filter(Boolean).join(" ");
+      if (/\\b(?:airtouch\\s*5|at5)\\b/i.test(fields)) return "AirTouch 5";
+      if (/\\b(?:airtouch\\s*4|at4)\\b/i.test(fields)) return "AirTouch 4";
+      return "AirTouch 4";
+    }
+
+    function collectAlerts(controller, state) {
+      const alerts = [];
+      if (controller.error) alerts.push(controller.error);
+      Object.entries(state.acs || {}).forEach(([id, ac]) => {
+        const status = ac.status || {};
+        if (status.error_code && status.error_code !== 0) {
+          const name = (ac.base || {}).name || `AC ${Number(id) + 1}`;
+          alerts.push(`${name} error ${status.error_code}`);
+        }
+      });
+      const dialog = state.system && state.system.dialog_message;
+      if (dialog) {
+        if (dialog.ascii) alerts.push(dialog.ascii);
+        else if (dialog.message_id !== undefined) alerts.push(`Dialog ${dialog.message_id}`);
+      }
+      return [...new Set(alerts.filter(Boolean))];
+    }
+
+    function renderAlerts(alerts) {
+      const strip = $("error-strip");
+      const track = $("error-track");
+      strip.classList.toggle("active", alerts.length > 0);
+      track.innerHTML = alerts.map((alert) => `<span>${escapeHtml(alert)}</span>`).join("");
+    }
+
+    function renderWeather(integrations) {
+      const chip = $("weather-chip");
+      const weather = integrations && integrations.weather && integrations.weather.state;
+      if (!weather) {
+        chip.classList.remove("active");
+        chip.textContent = "";
+        return;
+      }
+      const unit = weather.temperature_unit || "C";
+      const tempText = weather.temperature === undefined || weather.temperature === null ? "" : `${weather.temperature} ${unit}`;
+      const name = weather.friendly_name || weather.entity_id || "Weather";
+      chip.textContent = [name, weather.state, tempText].filter(Boolean).join(" / ");
+      chip.classList.add("active");
     }
 
     function groupNamesFromBitmap(groups, low, high) {
@@ -642,54 +955,83 @@ INDEX_HTML = """<!doctype html>
       const grouping = group.grouping || {};
       const damper = pct(status.percentage);
       const power = status.power_name || (status.power_code === 1 ? "on" : "off");
-      const isOn = power === "on";
+      const isOn = power === "on" || power === "turbo";
       const isSpill = group.spill_configured || status.spill_on;
+      const sensorControl = status.sensor_control === true;
+      const setpoint = Number.isInteger(status.setpoint) ? status.setpoint : null;
+      const percentage = damper === null ? null : damper;
       const pending = pendingGroups.has(String(id));
+      const roomTemp = status.has_sensor ? temp(status.temperature) : "-";
+      const valueLabel = !isOn
+        ? "OFF"
+        : sensorControl
+          ? temp(setpoint)
+          : percentage === 0
+            ? "Closed"
+            : (percentage === null ? "-" : `${percentage}%`);
       const classes = ["group-tile"];
       if (isOn) classes.push("on");
+      if (!isOn) classes.push("off");
       if (isSpill) classes.push("spill");
       const badges = [];
       badges.push(`<span class="${isOn ? "pill on" : "pill"}">${escapeHtml(power)}</span>`);
       if (isSpill) badges.push('<span class="pill warn">spill</span>');
-      if (status.sensor_control) badges.push('<span class="pill cool">sensor</span>');
+      if (sensorControl) badges.push('<span class="pill cool">sensor</span>');
+      if (status.low_battery) badges.push('<span class="pill warn">battery</span>');
+      if (status.timer_on) badges.push('<span class="pill">program</span>');
+      if (power === "turbo" || status.turbo_supported) badges.push('<span class="pill">turbo</span>');
       if (grouping.thermostat_name) badges.push(`<span class="pill">${escapeHtml(grouping.thermostat_name)}</span>`);
+      const slider = sensorControl
+        ? `<input class="zone-slider" type="range" min="16" max="30" step="1" value="${setpoint === null ? 23 : setpoint}" data-action="group-setpoint" data-group="${escapeHtml(id)}" ${pending || setpoint === null || !isOn ? "disabled" : ""}>`
+        : `<input class="zone-slider" type="range" min="0" max="100" step="5" value="${percentage === null ? 0 : percentage}" data-action="group-percentage" data-group="${escapeHtml(id)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>`;
+      const valueButtons = sensorControl
+        ? `
+          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint - 1}" ${pending || setpoint === null || !isOn ? "disabled" : ""}>Set -</button>
+          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint + 1}" ${pending || setpoint === null || !isOn ? "disabled" : ""}>Set +</button>`
+        : `
+          <button type="button" class="secondary" data-action="group-percentage" data-group="${escapeHtml(id)}" data-percentage="${percentage === null ? "" : Math.max(0, percentage - 10)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>-10%</button>
+          <button type="button" class="secondary" data-action="group-percentage" data-group="${escapeHtml(id)}" data-percentage="${percentage === null ? "" : Math.min(100, percentage + 10)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>+10%</button>`;
       return `
         <article class="${classes.join(" ")}">
           <div class="group-head">
             <div>
-              <div class="group-name">${escapeHtml(group.name || `Zone ${number}`)}</div>
               <div class="group-num">Zone ${number}</div>
+              <div class="group-name">${escapeHtml(group.name || `Zone ${number}`)}</div>
             </div>
-            <span class="pill">${escapeHtml(damper === null ? "-" : `${damper}%`)}</span>
+            <div class="tile-foot">${badges.join("")}</div>
           </div>
           <div class="group-body">
             <div class="reading">
               <div class="label">Room</div>
-              <div class="big">${escapeHtml(temp(status.temperature))}</div>
+              <div class="big">${escapeHtml(roomTemp)}</div>
             </div>
             <div class="reading">
-              <div class="label">Set</div>
-              <div class="small-value">${escapeHtml(temp(status.setpoint))}</div>
+              <div class="label">${escapeHtml(sensorControl ? "Set" : "Vent")}</div>
+              <div class="small-value">${escapeHtml(valueLabel)}</div>
               <div class="muted">${escapeHtml(status.has_sensor ? "mapped" : "no sensor")}</div>
             </div>
             <div class="damper">
               <div class="label">Damper</div>
               <div class="bar"><div class="bar-fill" style="width:${damper === null ? 0 : damper}%"></div></div>
+              ${slider}
             </div>
           </div>
-          <div class="tile-foot">${badges.join("")}</div>
           <div class="tile-actions">
             <button
               type="button"
-              class="${isOn ? "secondary" : ""}"
+              class="power-button ${isOn ? "secondary" : ""}"
               data-action="group-power"
               data-group="${escapeHtml(id)}"
               data-on="${isOn ? "false" : "true"}"
-              data-sensor-control="${status.sensor_control ? "true" : "false"}"
+              data-sensor-control="${sensorControl ? "true" : "false"}"
               data-setpoint="${escapeHtml(status.setpoint ?? "")}"
               data-percentage="${escapeHtml(status.percentage ?? "")}"
               ${pending ? "disabled" : ""}
-            >${escapeHtml(pending ? "Sending" : (isOn ? "Off" : "On"))}</button>
+            >${escapeHtml(pending ? "Sending" : "Power")}</button>
+          </div>
+          <div class="tile-actions">
+            ${valueButtons}
+            ${status.turbo_supported ? `<button type="button" class="secondary" data-action="group-turbo" data-group="${escapeHtml(id)}" data-sensor-control="${sensorControl ? "true" : "false"}" data-setpoint="${escapeHtml(status.setpoint ?? "")}" data-percentage="${escapeHtml(status.percentage ?? "")}" ${pending || !isOn ? "disabled" : ""}>Turbo</button>` : ""}
           </div>
         </article>`;
     }
@@ -724,12 +1066,91 @@ INDEX_HTML = """<!doctype html>
       }).join("") || '<div class="muted">No program data</div>';
     }
 
-    function renderState(payload) {
+    function renderProgramSupport(state) {
+      const programs = state.programs || {};
+      const acs = visibleAcs(state);
+      $("ac-timers").innerHTML = acs.map(([id, ac]) => {
+        const base = ac.base || {};
+        const status = ac.status || {};
+        return infoCard(
+          base.name || `AC ${Number(id) + 1}`,
+          `${status.power_on ? "On" : "Off"} / ${modeName(status.mode)} / ${fanName(status.fan)} / ${temp(status.setpoint)}`
+        );
+      }).join("") || '<div class="muted">No AC timer data</div>';
+      $("program-options").textContent = JSON.stringify({
+        known_programs: Object.keys(programs).length,
+        active_favourite: state.active_favourite,
+        timers_available: Object.keys(programs).some((id) => {
+          const program = programs[id] || {};
+          return !!((program.on_timer || {}).enabled || (program.off_timer || {}).enabled);
+        })
+      }, null, 2);
+      $("program-summary").textContent = JSON.stringify(programs, null, 2);
+    }
+
+    function renderServicePages(state) {
+      const groups = state.groups || state.active_groups || {};
+      const acs = visibleAcs(state);
+      const balanceZones = ((state.system || {}).balance || {}).zones || [];
+      $("grouping").innerHTML = Object.entries(groups)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([id, group]) => {
+          const grouping = group.grouping || {};
+          const zones = [grouping.zone_1, grouping.zone_2, grouping.zone_3, grouping.zone_4]
+            .filter((zone) => zone !== undefined && zone !== null && zone !== 0)
+            .join(", ");
+          return infoCard(group.name || `Zone ${Number(id) + 1}`, zones ? `Grouped zones: ${zones}` : "Default single-zone group");
+        }).join("") || '<div class="muted">No grouping data</div>';
+      $("spill").innerHTML = Object.entries(groups)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([id, group]) => {
+          const status = group.status || {};
+          const configured = group.spill_configured || status.spill_on;
+          return infoCard(
+            group.name || `Zone ${Number(id) + 1}`,
+            configured ? "Configured as spill/storage path" : "Normal controlled zone",
+            `<div><span class="${configured ? "pill warn" : "pill"}">${configured ? "spill" : "normal"}</span></div>`
+          );
+        }).join("") || '<div class="muted">No spill data</div>';
+      $("balance").innerHTML = balanceZones.length
+        ? balanceZones.map((zone) => {
+          const group = groups[zone.zone] || {};
+          return row([
+            group.name || `Zone ${Number(zone.zone) + 1}`,
+            zone.set_value ?? "-",
+            zone.current_value ?? "-",
+            (group.status || {}).power_name || "-"
+          ]);
+        }).join("")
+        : row(["-", "No balance data", "-", "-"]);
+      $("ac-setup").innerHTML = acs.map(([id, ac]) => {
+        const base = ac.base || {};
+        const settings = ac.settings || {};
+        return infoCard(
+          base.name || `AC ${Number(id) + 1}`,
+          `Groups ${text(base.group_start)}-${Number.isInteger(base.group_start) && Number.isInteger(base.group_count) ? base.group_start + base.group_count - 1 : "-"} / brand ${text(base.brand)} / hide spill ${settings.hide_spill_group ? "yes" : "no"}`
+        );
+      }).join("") || '<div class="muted">No AC setup data</div>';
+      $("parameters").textContent = JSON.stringify({
+        system: state.system,
+        acs: state.acs,
+        service: state.service,
+        password: state.password
+      }, null, 2);
+    }
+
+    function renderState(payload, eventsPayload = {}) {
       const controller = payload.controller || {};
       const runtime = (payload.runtime && payload.runtime.runtime) || {};
       const transactions = (payload.runtime && payload.runtime.transactions) || {};
       const state = (payload.runtime && payload.runtime.state) || {};
+      const integrations = payload.integrations || {};
       const config = controller.config || {};
+      configuredTheme = config.ui_theme || "system";
+      applyTheme();
+      $("app-title").textContent = detectAirTouchModel(state);
+      renderAlerts(collectAlerts(controller, state));
+      renderWeather(integrations);
       const acEntries = visibleAcs(state);
       if (!acEntries.some(([id]) => Number(id) === selectedAc)) selectedAc = Number(acEntries[0] && acEntries[0][0]) || 0;
 
@@ -758,9 +1179,7 @@ INDEX_HTML = """<!doctype html>
       const pageStart = zonePage * 8;
       const pageEntries = zoneEntries.slice(pageStart, pageStart + 8);
       const selectedBase = selectedAcRecord.base || {};
-      $("zone-context").textContent = acEntries.length > 1
-        ? `${selectedBase.name || `AC ${selectedAc + 1}`} zones`
-        : `${zoneEntries.length} configured zones`;
+      $("zone-count").textContent = String(zoneEntries.length);
       $("zone-pages").innerHTML = pageCount > 1
         ? Array.from({length: pageCount}, (_value, index) => `<button type="button" class="option ${index === zonePage ? "active" : ""}" data-action="zone-page" data-page="${index}">${(index * 8) + 1}-${Math.min((index + 1) * 8, zoneEntries.length)}</button>`).join("")
         : "";
@@ -770,6 +1189,8 @@ INDEX_HTML = """<!doctype html>
 
       renderFavourites(state.favourites || {}, groups);
       renderPrograms(state.programs || {}, groups);
+      renderProgramSupport(state);
+      renderServicePages(state);
 
       const sensors = state.sensors || {};
       $("sensors").innerHTML = Object.entries(sensors)
@@ -778,7 +1199,12 @@ INDEX_HTML = """<!doctype html>
           id,
           sensor.sensor_name,
           temp(sensor.temperature),
-          sensor.status || (sensor.present === false ? "missing" : sensor.listed ? "listed" : "-")
+          [
+            sensor.kind,
+            sensor.status || (sensor.present === false ? "missing" : sensor.listed ? "listed" : "-"),
+            sensor.battery !== undefined && sensor.battery !== null ? `battery ${sensor.battery}` : "",
+            sensor.signal !== undefined && sensor.signal !== null ? `signal ${sensor.signal}` : ""
+          ].filter(Boolean).join(" / ")
         ])).join("") || row(["-", "No sensor data", "-", "-"]);
 
       $("system").textContent = JSON.stringify({
@@ -823,21 +1249,95 @@ INDEX_HTML = """<!doctype html>
       document.querySelectorAll(".view").forEach((item) => item.classList.toggle("active", item.id === `view-${view}`));
     });
 
+    document.querySelectorAll(".subnav").forEach((nav) => {
+      nav.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-subview-button]");
+        if (!button) return;
+        const scope = button.dataset.subviewButton;
+        const subview = button.dataset.subview;
+        document.querySelectorAll(`[data-subview-button="${scope}"]`).forEach((item) => item.classList.toggle("active", item === button));
+        document.querySelectorAll(`[id^="${scope}-"]`).forEach((item) => item.classList.toggle("active", item.id === `${scope}-${subview}`));
+      });
+    });
+
+    $("theme-toggle").addEventListener("click", () => {
+      const order = ["system", "light", "dark"];
+      selectedTheme = order[(order.indexOf(selectedTheme) + 1) % order.length];
+      localStorage.setItem(THEME_KEY, selectedTheme);
+      applyTheme();
+    });
+
+    if (window.matchMedia) {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+    }
+
     $("groups").addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action='group-power']");
+      const button = event.target.closest("button[data-action]");
       if (!button) return;
+      const action = button.dataset.action;
+      if (!["group-power", "group-setpoint", "group-percentage", "group-turbo"].includes(action)) return;
       const group = button.dataset.group;
       pendingGroups.add(group);
       button.disabled = true;
       button.textContent = "Sending";
       try {
-        await sendCommand("group_power", {
-          group: Number(group),
-          on: button.dataset.on === "true",
-          sensor_control: button.dataset.sensorControl === "true",
-          setpoint: Number(button.dataset.setpoint),
-          percentage: Number(button.dataset.percentage)
-        });
+        if (action === "group-power") {
+          await sendCommand("group_power", {
+            group: Number(group),
+            on: button.dataset.on === "true",
+            sensor_control: button.dataset.sensorControl === "true",
+            setpoint: Number(button.dataset.setpoint),
+            percentage: Number(button.dataset.percentage)
+          });
+        } else if (action === "group-setpoint") {
+          await sendCommand("group_setpoint", {
+            group: Number(group),
+            setpoint: Number(button.dataset.setpoint)
+          });
+        } else if (action === "group-percentage") {
+          await sendCommand("group_percentage", {
+            group: Number(group),
+            percentage: Number(button.dataset.percentage)
+          });
+        } else if (action === "group-turbo") {
+          await sendCommand("group_turbo", {
+            group: Number(group),
+            sensor_control: button.dataset.sensorControl === "true",
+            setpoint: Number(button.dataset.setpoint),
+            percentage: Number(button.dataset.percentage)
+          });
+        }
+        setTimeout(refresh, 300);
+      } catch (err) {
+        setStatus({ok: false, error: err.message});
+      } finally {
+        setTimeout(() => {
+          pendingGroups.delete(group);
+          refresh();
+        }, 900);
+      }
+    });
+
+    $("groups").addEventListener("change", async (event) => {
+      const input = event.target.closest("input[data-action]");
+      if (!input) return;
+      const action = input.dataset.action;
+      if (!["group-setpoint", "group-percentage"].includes(action)) return;
+      const group = input.dataset.group;
+      pendingGroups.add(group);
+      input.disabled = true;
+      try {
+        if (action === "group-setpoint") {
+          await sendCommand("group_setpoint", {
+            group: Number(group),
+            setpoint: Number(input.value)
+          });
+        } else {
+          await sendCommand("group_percentage", {
+            group: Number(group),
+            percentage: Number(input.value)
+          });
+        }
         setTimeout(refresh, 300);
       } catch (err) {
         setStatus({ok: false, error: err.message});
@@ -913,13 +1413,14 @@ INDEX_HTML = """<!doctype html>
           fetch(apiPath("events")).then((r) => r.json())
         ]);
         setStatus(health);
-        renderState(state);
+        renderState(state, events);
         renderEvents(events);
       } catch (err) {
         setStatus({ok: false, error: err.message});
       }
     }
 
+    applyTheme();
     refresh();
     setInterval(refresh, 1500);
   </script>

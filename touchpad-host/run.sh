@@ -36,6 +36,18 @@ TOUCHPAD_TEMPERATURE_SENSOR="$(config touchpad_temperature_sensor "")"
 TOUCHPAD_TEMPERATURE="$(config touchpad_temperature 25.0)"
 HEARTBEAT_PAYLOAD="$(config heartbeat_payload "")"
 BUS_LOG="$(config bus_log true)"
+UI_THEME="$(config ui_theme system)"
+WEATHER_ENTITY="$(config weather_entity "")"
+WEATHER_POLL_INTERVAL="$(config weather_poll_interval 60.0)"
+MQTT_ENABLED="$(config mqtt_enabled false)"
+MQTT_HOST="$(config mqtt_host "")"
+MQTT_PORT="$(config mqtt_port 1883)"
+MQTT_USERNAME="$(config mqtt_username "")"
+MQTT_PASSWORD="$(config mqtt_password "")"
+MQTT_DISCOVERY="$(config mqtt_discovery true)"
+MQTT_DISCOVERY_PREFIX="$(config mqtt_discovery_prefix homeassistant)"
+MQTT_TOPIC_PREFIX="$(config mqtt_topic_prefix airtouch4)"
+MQTT_PUBLISH_INTERVAL="$(config mqtt_publish_interval 10.0)"
 LOG_LEVEL="$(config log_level info)"
 
 case "${TRANSPORT}" in
@@ -80,6 +92,16 @@ ARGS=(
     "--heartbeat-interval" "${HEARTBEAT_INTERVAL}"
     "--touchpad-temperature" "${TOUCHPAD_TEMPERATURE}"
     "--heartbeat-payload" "${RESOLVED_HEARTBEAT_PAYLOAD}"
+    "--ui-theme" "${UI_THEME}"
+    "--weather-entity" "${WEATHER_ENTITY}"
+    "--weather-poll-interval" "${WEATHER_POLL_INTERVAL}"
+    "--mqtt-host" "${MQTT_HOST}"
+    "--mqtt-port" "${MQTT_PORT}"
+    "--mqtt-username" "${MQTT_USERNAME}"
+    "--mqtt-password" "${MQTT_PASSWORD}"
+    "--mqtt-discovery-prefix" "${MQTT_DISCOVERY_PREFIX}"
+    "--mqtt-topic-prefix" "${MQTT_TOPIC_PREFIX}"
+    "--mqtt-publish-interval" "${MQTT_PUBLISH_INTERVAL}"
     "--log-level" "${LOG_LEVEL}"
 )
 
@@ -90,6 +112,14 @@ fi
 if [[ "${BUS_LOG}" == "true" ]]; then
     mkdir -p /data/logs
     ARGS+=("--bus-log" "/data/logs/airtouch-bus.jsonl")
+fi
+
+if [[ "${MQTT_ENABLED}" == "true" ]]; then
+    ARGS+=("--mqtt-enabled")
+fi
+
+if [[ "${MQTT_DISCOVERY}" != "true" ]]; then
+    ARGS+=("--no-mqtt-discovery")
 fi
 
 echo "Starting AirTouch 4 touchpad host with ${TRANSPORT}"
