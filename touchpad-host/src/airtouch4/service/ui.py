@@ -893,6 +893,18 @@ INDEX_HTML = """<!doctype html>
         <div class="field"><label>${prefix} min</label><input data-field="${prefix.toLowerCase()}-minute" type="number" min="0" max="59" value="${escapeHtml(timer.minute ?? 0)}"></div>`;
     }
 
+    function boolSelect(field, label, value) {
+      return `<div class="field"><label>${escapeHtml(label)}</label><select data-field="${escapeHtml(field)}"><option value="true" ${value ? "selected" : ""}>On</option><option value="false" ${!value ? "selected" : ""}>Off</option></select></div>`;
+    }
+
+    function numberField(field, label, value, min, max) {
+      return `<div class="field"><label>${escapeHtml(label)}</label><input data-field="${escapeHtml(field)}" type="number" min="${escapeHtml(min)}" max="${escapeHtml(max)}" value="${escapeHtml(value)}"></div>`;
+    }
+
+    function textField(field, label, value, maxlength = 16) {
+      return `<div class="field"><label>${escapeHtml(label)}</label><input data-field="${escapeHtml(field)}" maxlength="${escapeHtml(maxlength)}" value="${escapeHtml(value || "")}" autocomplete="off"></div>`;
+    }
+
     function themeToApply() {
       const theme = selectedTheme === "system" ? configuredTheme : selectedTheme;
       if (theme === "dark" || theme === "light") return theme;
@@ -1288,11 +1300,27 @@ INDEX_HTML = """<!doctype html>
       $("favourites").innerHTML = entries.map(([id, favourite]) => {
         const groupNames = groupNamesFromBitmap(groups, favourite.groups_1_8_bitmap || 0, favourite.groups_9_16_bitmap || 0);
         const pending = pendingFavourites.has(String(id));
+        const groupChecks = Array.from({length: 16}, (_value, index) => {
+          const selected = index < 8
+            ? !!((favourite.groups_1_8_bitmap || 0) & (1 << index))
+            : !!((favourite.groups_9_16_bitmap || 0) & (1 << (index - 8)));
+          const name = (groups[index] || {}).name || `Zone ${index + 1}`;
+          return `<label class="check-row"><input type="checkbox" data-favourite-group="${index}" ${selected ? "checked" : ""}><span>${escapeHtml(name)}</span></label>`;
+        }).join("");
         return `
-          <article class="card">
+          <article class="card" data-favourite-card="${escapeHtml(id)}">
             <div class="card-title">${escapeHtml(favourite.name || `Favourite ${Number(id) + 1}`)}</div>
             <div class="muted">${escapeHtml(groupNames.length ? groupNames.join(", ") : "No zones selected")}</div>
-            <button type="button" data-action="active-favourite" data-favourite="${escapeHtml(id)}" ${pending ? "disabled" : ""}>${escapeHtml(pending ? "Sending" : "Apply")}</button>
+            <div class="service-card-body">
+              <div class="field-grid">
+                ${textField("favourite-name", "Name", favourite.name || "", 8)}
+              </div>
+              <div class="field-grid">${groupChecks}</div>
+              <div class="service-actions">
+                <button type="button" data-action="active-favourite" data-favourite="${escapeHtml(id)}" ${pending ? "disabled" : ""}>${escapeHtml(pending ? "Sending" : "Apply")}</button>
+                <button type="button" class="secondary" data-action="favourite-save" data-favourite="${escapeHtml(id)}">Save Favourite</button>
+              </div>
+            </div>
           </article>`;
       }).join("") || '<div class="muted">No favourite data</div>';
     }
@@ -1361,6 +1389,37 @@ INDEX_HTML = """<!doctype html>
         hour: Number(card.querySelector(`[data-field="${prefix}-hour"]`).value),
         minute: Number(card.querySelector(`[data-field="${prefix}-minute"]`).value)
       };
+    }
+
+    function fieldBool(card, field) {
+      return card.querySelector(`[data-field="${field}"]`).value === "true";
+    }
+
+    function fieldNumber(card, field) {
+      return Number(card.querySelector(`[data-field="${field}"]`).value);
+    }
+
+    function balanceValuesFromPage() {
+      const values = Array(16).fill(0);
+      document.querySelectorAll("[data-balance-value]").forEach((input) => {
+        const zone = Number(input.dataset.balanceValue);
+        if (zone >= 0 && zone < values.length) values[zone] = Number(input.value);
+      });
+      return values;
+    }
+
+    function turboGroupsFromState() {
+      const values = [];
+      (((latestState.system || {}).turbo_group || {}).records || []).forEach((record) => {
+        values[Number(record.ac)] = record.group === null || record.group === undefined ? 255 : Number(record.group);
+      });
+      return values;
+    }
+
+    function favouriteGroupsFromCard(card) {
+      return Array.from(card.querySelectorAll("[data-favourite-group]"))
+        .filter((input) => input.checked)
+        .map((input) => Number(input.dataset.favouriteGroup));
     }
 
     function renderPrograms(programs, groups) {
@@ -1490,18 +1549,27 @@ INDEX_HTML = """<!doctype html>
       $("balance").innerHTML = balanceZones.length
         ? balanceZones.map((zone) => {
           const group = groups[zone.zone] || {};
-          return row([
-            group.name || `Zone ${Number(zone.zone) + 1}`,
-            zone.set_value ?? "-",
-            zone.current_value ?? "-",
-            (group.status || {}).power_name || "-"
-          ]);
+          return `<tr data-balance-zone="${escapeHtml(zone.zone)}">
+            <td>${escapeHtml(group.name || `Zone ${Number(zone.zone) + 1}`)}</td>
+            <td><input data-balance-value="${escapeHtml(zone.zone)}" type="number" min="0" max="255" value="${escapeHtml(zone.set_value ?? 0)}"></td>
+            <td>${escapeHtml(zone.current_value ?? "-")}</td>
+            <td>
+              <div class="service-actions">
+                <button type="button" data-service-action="balance-zone" data-zone="${escapeHtml(zone.zone)}">Set</button>
+                <span class="muted">${escapeHtml((group.status || {}).power_name || "-")}</span>
+              </div>
+            </td>
+          </tr>`;
         }).join("")
         : row(["-", "No balance data", "-", "-"]);
       $("balance").innerHTML += `<tr><td colspan="4"><div class="service-actions"><button type="button" data-service-action="balance-start">Start Balance</button><button type="button" class="secondary" data-service-action="balance-stop">Stop Balance</button></div></td></tr>`;
       $("ac-setup").innerHTML = acs.map(([id, ac]) => {
         const base = ac.base || {};
         const settings = ac.settings || {};
+        const modes = settings.modes || {};
+        const fans = settings.fan_values || {};
+        const selectors = settings.selector_visibility || {};
+        const turboRecord = (((system.turbo_group || {}).records || []).find((item) => Number(item.ac) === Number(id))) || {};
         return `
           <article class="card" data-service-ac="${escapeHtml(id)}">
             <div class="card-title">${escapeHtml(base.name || `AC ${Number(id) + 1}`)}</div>
@@ -1520,10 +1588,17 @@ INDEX_HTML = """<!doctype html>
                 <div class="field"><label>Max set</label><input data-field="max-setpoint" type="number" min="0" max="255" value="${escapeHtml(settings.max_setpoint ?? 30)}"></div>
                 <div class="field"><label>Auto off</label><select data-field="auto-off"><option value="true" ${settings.auto_off ? "selected" : ""}>On</option><option value="false" ${!settings.auto_off ? "selected" : ""}>Off</option></select></div>
                 <div class="field"><label>Time limit</label><input data-field="on-time-limit" type="number" min="0" max="15" value="${escapeHtml(settings.on_time_limit ?? 0)}"></div>
+                ${["auto", "cool", "heat", "dry", "fan"].map((mode) => boolSelect(`mode-${mode}`, `Mode ${mode}`, !!modes[mode])).join("")}
+                ${["auto", "quiet", "low", "medium", "high", "powerful", "turbo"].map((fan) => numberField(`fan-${fan}`, `Fan ${fan}`, fans[fan] ?? 0, 0, 15)).join("")}
+                ${["auto", "touchpad_1", "touchpad_2", "average", "economy"].map((selector) => boolSelect(`selector-${selector}`, `Show ${selector}`, !!selectors[selector])).join("")}
+                ${numberField("selector-groups-1", "Selector zones 1-8", selectors.groups_1_8_bitmap ?? 0, 0, 255)}
+                ${numberField("selector-groups-2", "Selector zones 9-16", selectors.groups_9_16_bitmap ?? 0, 0, 255)}
+                ${numberField("turbo-group", "Turbo zone", turboRecord.group ?? 255, 0, 255)}
               </div>
               <div class="service-actions">
                 <button type="button" data-service-action="ac-base-info" data-ac="${escapeHtml(id)}">Save AC Base</button>
                 <button type="button" class="secondary" data-service-action="ac-setting-new" data-ac="${escapeHtml(id)}">Save AC Settings</button>
+                <button type="button" class="secondary" data-service-action="turbo-group" data-ac="${escapeHtml(id)}">Save Turbo Zone</button>
               </div>
             </div>
           </article>`;
@@ -1532,22 +1607,56 @@ INDEX_HTML = """<!doctype html>
       const service = state.service || {};
       if (document.activeElement !== $("service-company-input")) $("service-company-input").value = service.company || service.company_name || "";
       if (document.activeElement !== $("service-phone-input")) $("service-phone-input").value = service.phone || service.phone_number || "";
-      $("parameters").innerHTML = [
-        metric("System", system.system_name || "-"),
-        metric("Groups", system.group_count ?? "-"),
-        metric("ACs", system.ac_count ?? "-"),
-        metric("Device ID", system.device_id || "-"),
-        metric("Firmware", system.firmware_version_raw || "-"),
-        metric("Sensors", (system.sensor_addresses || []).join(", ") || "-"),
-      ].join("");
-      $("system").innerHTML = [
-        metric("Service", [service.company, service.phone].filter(Boolean).join(" / ") || "-"),
-        metric("Password Pages", Object.keys(state.password || {}).length),
-        metric("Last LED", (state.last_led || {}).led ?? "-"),
-        metric("Supply Air", (system.supply_air || []).map((item) => item.status || item.temperature || "-").join(", ") || "-"),
-        metric("Touchpads", (((system.sensor_list || {}).touchpad_addresses) || []).map((item) => `0x${Number(item).toString(16).toUpperCase()}`).join(", ") || "-"),
-        metric("Runtime", (system.expanded || {}).software_version || "-"),
-      ].join("");
+      $("parameters").innerHTML = `
+        <article class="card">
+          <div class="card-title">Preference</div>
+          <div class="field-grid">
+            ${boolSelect("show-ac-errors", "Show AC errors", !!system.show_ac_errors)}
+            ${boolSelect("pref-show-outside-temp", "Show outside temp", !!system.show_outside_temp)}
+            ${boolSelect("pref-show-control-sensor", "Show control sensor", !!system.show_control_sensor)}
+            ${boolSelect("use-fahrenheit", "Fahrenheit", !!system.use_fahrenheit)}
+            ${numberField("location", "Location", system.location ?? system.address_or_location ?? 0, 0, 127)}
+            ${boolSelect("screensaver-enabled", "Screensaver", !!system.screensaver_enabled)}
+            ${numberField("screensaver-timeout", "Screen timeout", system.screensaver_timeout ?? 0, 0, 127)}
+          </div>
+          <div class="service-actions"><button type="button" data-service-action="preference">Save Preference</button></div>
+        </article>
+        <article class="card">
+          <div class="card-title">Parameters</div>
+          <div class="field-grid">
+            ${numberField("group-count", "Groups", system.group_count ?? (Object.keys(groups).length || 1), 1, 16)}
+            ${numberField("damper-rpm", "Damper RPM", system.damper_rpm ?? 100, 0, 255)}
+            ${numberField("touchpad-1-location", "Touchpad 1 location", system.touchpad_1_location ?? 255, 0, 255)}
+            ${numberField("touchpad-2-location", "Touchpad 2 location", system.touchpad_2_location ?? 255, 0, 255)}
+            ${boolSelect("ac-button-blocked", "Block AC button", !!system.ac_button_blocked)}
+            ${boolSelect("param-show-outside-temp", "Outside temp", !!system.show_outside_temp)}
+            ${boolSelect("lock-to-temp-control", "Lock temp control", !!system.lock_to_temp_control)}
+            ${boolSelect("param-show-control-sensor", "Control sensor", !!system.show_control_sensor)}
+          </div>
+          <div class="service-actions"><button type="button" data-service-action="parameters">Save Parameters</button></div>
+        </article>
+        ${metric("Device ID", system.device_id || "-")}
+        ${metric("Firmware", system.firmware_version_raw || "-")}
+        ${metric("Sensors", (system.sensor_addresses || []).join(", ") || "-")}`;
+      $("system").innerHTML = `
+        <article class="card">
+          <div class="card-title">Service Reminder</div>
+          <div class="field-grid">
+            ${boolSelect("show-service-due", "Show service due", !!service.show_service_due)}
+            ${boolSelect("service-due-locked", "Lock service due", !!service.service_due_locked)}
+            ${boolSelect("filter-clean-due", "Filter clean due", !!service.filter_clean_due)}
+            ${boolSelect("maintenance-due", "Maintenance due", !!service.maintenance_due)}
+            ${numberField("service-months", "Months", service.months ?? 0, 0, 255)}
+            ${numberField("service-days", "Days", service.days ?? 0, 0, 65535)}
+            ${numberField("service-runtime-hours", "Runtime hours", service.runtime_hours ?? 0, 0, 4294967295)}
+          </div>
+          <div class="service-actions"><button type="button" data-service-action="service-contact">Save Service</button></div>
+        </article>
+        ${metric("Password Pages", Object.keys(state.password || {}).length)}
+        ${metric("Last LED", (state.last_led || {}).led_code ?? "-")}
+        ${metric("Supply Air", (system.supply_air || []).map((item) => item.status || item.temperature || "-").join(", ") || "-")}
+        ${metric("Touchpads", (((system.sensor_list || {}).touchpad_addresses) || []).map((item) => `0x${Number(item).toString(16).toUpperCase()}`).join(", ") || "-")}
+        ${metric("Runtime", (system.expanded || {}).software_version || "-")}`;
     }
 
     function renderState(payload, eventsPayload = {}) {
@@ -1707,9 +1816,16 @@ INDEX_HTML = """<!doctype html>
             .map((select) => Number(select.value));
           await sendCommand("spill", {ac_spill_types: acSpillTypes, spill_groups: spillGroups});
         } else if (action === "balance-start") {
-          await sendCommand("balance_start", {});
+          await sendCommand("balance_start", {current_values: balanceValuesFromPage()});
+        } else if (action === "balance-zone") {
+          const zone = Number(button.dataset.zone);
+          await sendCommand("balance_start", {
+            current_values: balanceValuesFromPage(),
+            zone,
+            value: Number(document.querySelector(`[data-balance-value="${zone}"]`).value)
+          });
         } else if (action === "balance-stop") {
-          await sendCommand("balance_stop", {});
+          await sendCommand("balance_stop", {current_values: balanceValuesFromPage()});
         } else if (action === "ac-base-info") {
           const ac = Number(button.dataset.ac);
           const card = button.closest("[data-service-ac]");
@@ -1731,21 +1847,86 @@ INDEX_HTML = """<!doctype html>
           const records = acSettingRecordsFromState();
           const record = records.find((item) => item.ac === ac);
           if (!record) throw new Error(`No AC setting state for AC ${ac + 1}`);
-          record.hide_spill_group = card.querySelector('[data-field="hide-spill"]').value === "true";
-          record.ctrl_thermostat = Number(card.querySelector('[data-field="ctrl-thermostat"]').value);
-          record.cool_adjust = Number(card.querySelector('[data-field="cool-adjust"]').value);
-          record.heat_adjust = Number(card.querySelector('[data-field="heat-adjust"]').value);
-          record.min_setpoint = Number(card.querySelector('[data-field="min-setpoint"]').value);
-          record.max_setpoint = Number(card.querySelector('[data-field="max-setpoint"]').value);
-          record.auto_off = card.querySelector('[data-field="auto-off"]').value === "true";
-          record.on_time_limit = Number(card.querySelector('[data-field="on-time-limit"]').value);
+          record.hide_spill_group = fieldBool(card, "hide-spill");
+          record.ctrl_thermostat = fieldNumber(card, "ctrl-thermostat");
+          record.cool_adjust = fieldNumber(card, "cool-adjust");
+          record.heat_adjust = fieldNumber(card, "heat-adjust");
+          record.min_setpoint = fieldNumber(card, "min-setpoint");
+          record.max_setpoint = fieldNumber(card, "max-setpoint");
+          record.auto_off = fieldBool(card, "auto-off");
+          record.on_time_limit = fieldNumber(card, "on-time-limit");
+          record.modes = {
+            auto: fieldBool(card, "mode-auto"),
+            cool: fieldBool(card, "mode-cool"),
+            heat: fieldBool(card, "mode-heat"),
+            dry: fieldBool(card, "mode-dry"),
+            fan: fieldBool(card, "mode-fan")
+          };
+          record.fan_values = {
+            auto: fieldNumber(card, "fan-auto"),
+            quiet: fieldNumber(card, "fan-quiet"),
+            low: fieldNumber(card, "fan-low"),
+            medium: fieldNumber(card, "fan-medium"),
+            high: fieldNumber(card, "fan-high"),
+            powerful: fieldNumber(card, "fan-powerful"),
+            turbo: fieldNumber(card, "fan-turbo")
+          };
+          record.selector_visibility = {
+            auto: fieldBool(card, "selector-auto"),
+            touchpad_1: fieldBool(card, "selector-touchpad_1"),
+            touchpad_2: fieldBool(card, "selector-touchpad_2"),
+            average: fieldBool(card, "selector-average"),
+            economy: fieldBool(card, "selector-economy"),
+            groups_1_8_bitmap: fieldNumber(card, "selector-groups-1"),
+            groups_9_16_bitmap: fieldNumber(card, "selector-groups-2")
+          };
           await sendCommand("ac_setting_new", {records});
+        } else if (action === "turbo-group") {
+          const ac = Number(button.dataset.ac);
+          const card = button.closest("[data-service-ac]");
+          await sendCommand("turbo_group", {
+            ac,
+            group: fieldNumber(card, "turbo-group"),
+            current_groups: turboGroupsFromState(),
+            one_duct_system: !!((latestState.system || {}).one_duct_system),
+            ac_count: Math.max(1, visibleAcs(latestState).length)
+          });
         } else if (action === "preference") {
-          await sendCommand("preference", {system_name: $("system-name-input").value});
+          const preferenceCard = button.closest(".card") || $("service-parameters");
+          await sendCommand("preference", {
+            system_name: $("system-name-input").value,
+            show_ac_errors: fieldBool(preferenceCard, "show-ac-errors"),
+            show_outside_temp: fieldBool(preferenceCard, "pref-show-outside-temp"),
+            show_control_sensor: fieldBool(preferenceCard, "pref-show-control-sensor"),
+            use_fahrenheit: fieldBool(preferenceCard, "use-fahrenheit"),
+            location: fieldNumber(preferenceCard, "location"),
+            screensaver_enabled: fieldBool(preferenceCard, "screensaver-enabled"),
+            screensaver_timeout: fieldNumber(preferenceCard, "screensaver-timeout")
+          });
+        } else if (action === "parameters") {
+          const card = button.closest(".card");
+          await sendCommand("parameters", {
+            group_count: fieldNumber(card, "group-count"),
+            damper_rpm: fieldNumber(card, "damper-rpm"),
+            touchpad_1_location: fieldNumber(card, "touchpad-1-location"),
+            touchpad_2_location: fieldNumber(card, "touchpad-2-location"),
+            ac_button_blocked: fieldBool(card, "ac-button-blocked"),
+            show_outside_temp: fieldBool(card, "param-show-outside-temp"),
+            lock_to_temp_control: fieldBool(card, "lock-to-temp-control"),
+            show_control_sensor: fieldBool(card, "param-show-control-sensor")
+          });
         } else if (action === "service-contact") {
+          const serviceCard = button.closest(".card") || $("service-system");
           await sendCommand("service", {
             company: $("service-company-input").value,
             phone: $("service-phone-input").value,
+            show_service_due: fieldBool(serviceCard, "show-service-due"),
+            service_due_locked: fieldBool(serviceCard, "service-due-locked"),
+            filter_clean_due: fieldBool(serviceCard, "filter-clean-due"),
+            maintenance_due: fieldBool(serviceCard, "maintenance-due"),
+            months: fieldNumber(serviceCard, "service-months"),
+            days: fieldNumber(serviceCard, "service-days"),
+            runtime_hours: fieldNumber(serviceCard, "service-runtime-hours")
           });
         }
         setTimeout(refresh, 300);
@@ -1877,12 +2058,22 @@ INDEX_HTML = """<!doctype html>
     });
 
     $("favourites").addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action='active-favourite']");
+      const button = event.target.closest("button[data-action]");
       if (!button) return;
+      const action = button.dataset.action;
       const favourite = button.dataset.favourite;
       pendingFavourites.add(favourite);
       try {
-        await sendCommand("active_favourite", {favourite: Number(favourite)});
+        if (action === "active-favourite") {
+          await sendCommand("active_favourite", {favourite: Number(favourite)});
+        } else if (action === "favourite-save") {
+          const card = button.closest("[data-favourite-card]");
+          await sendCommand("favourite", {
+            favourite: Number(favourite),
+            name: card.querySelector('[data-field="favourite-name"]').value,
+            groups: favouriteGroupsFromCard(card)
+          });
+        }
         setTimeout(refresh, 300);
       } catch (err) {
         setStatus({ok: false, error: err.message});
