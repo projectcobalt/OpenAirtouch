@@ -36,7 +36,6 @@ INDEX_HTML = """<!doctype html>
       --active-ink: #ffffff;
       --shadow: 0 18px 36px rgba(22, 33, 44, .12);
       --shadow-soft: 0 8px 20px rgba(22, 33, 44, .08);
-      --surface-ring: rgba(15, 110, 142, .18);
       --glass: rgba(255, 255, 255, .76);
       --lcd: #f7fbfb;
     }
@@ -66,7 +65,6 @@ INDEX_HTML = """<!doctype html>
       --active-ink: #071217;
       --shadow: 0 10px 28px rgba(0, 0, 0, .22);
       --shadow-soft: 0 4px 14px rgba(0, 0, 0, .18);
-      --surface-ring: rgba(87, 182, 212, .24);
       --glass: rgba(23, 33, 42, .78);
       --lcd: #121b22;
     }
@@ -188,17 +186,29 @@ INDEX_HTML = """<!doctype html>
     }
     .nav {
       grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      width: 100%;
+      align-items: stretch;
+    }
+    .nav-group {
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
-      width: 100%;
       padding: 4px;
       border: 1px solid rgba(255,255,255,.14);
       border-radius: 8px;
       background: rgba(255,255,255,.06);
     }
+    .nav-pages {
+      min-width: 0;
+    }
+    .nav-settings {
+      flex: 0 0 auto;
+    }
     .nav .settings-tab {
-      margin-left: auto;
+      width: 42px;
       min-width: 42px;
       font-size: 17px;
     }
@@ -539,7 +549,7 @@ INDEX_HTML = """<!doctype html>
     .group-tile.on {
       border-color: color-mix(in srgb, var(--ok) 50%, var(--line));
       background: var(--panel);
-      box-shadow: 0 0 0 1px var(--surface-ring), var(--shadow-soft);
+      box-shadow: var(--shadow-soft);
     }
     .group-tile.off {
       background: color-mix(in srgb, var(--panel) 60%, var(--bg));
@@ -652,7 +662,7 @@ INDEX_HTML = """<!doctype html>
       stroke-linejoin: round;
     }
     .temp-line .area {
-      fill: color-mix(in srgb, var(--accent) 13%, transparent);
+      fill: color-mix(in srgb, var(--muted) 10%, transparent);
       stroke: none;
     }
     .temp-line .axis {
@@ -686,7 +696,7 @@ INDEX_HTML = """<!doctype html>
     .bar-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--ok));
+      background: var(--accent);
     }
     .zone-slider {
       width: 100%;
@@ -732,7 +742,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--accent);
       border-radius: 7px;
       padding: 5px 12px;
-      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%), var(--accent));
+      background: var(--accent);
       color: #fff;
       font: inherit;
       font-weight: 720;
@@ -752,7 +762,7 @@ INDEX_HTML = """<!doctype html>
     }
     button.option.active {
       border-color: var(--accent);
-      background: linear-gradient(180deg, color-mix(in srgb, var(--active-bg) 92%, white 8%), var(--active-bg));
+      background: var(--active-bg);
       color: var(--active-ink);
       box-shadow: var(--shadow-soft);
     }
@@ -926,9 +936,13 @@ INDEX_HTML = """<!doctype html>
       </div>
     </div>
     <nav class="nav" aria-label="Primary">
-      <button type="button" class="active" data-view-button="control">Control</button>
-      <button type="button" data-view-button="programs">Favourites & Programs</button>
-      <button type="button" class="settings-tab" data-view-button="settings" aria-label="Settings" title="Settings">&#9881;</button>
+      <div class="nav-group nav-pages">
+        <button type="button" class="active" data-view-button="control">Control</button>
+        <button type="button" data-view-button="programs">Favourites & Programs</button>
+      </div>
+      <div class="nav-group nav-settings">
+        <button type="button" class="settings-tab" data-view-button="settings" aria-label="Settings" title="Settings">&#9881;</button>
+      </div>
     </nav>
   </header>
   <main>
@@ -993,6 +1007,7 @@ INDEX_HTML = """<!doctype html>
     <div id="view-settings" class="view">
       <div class="subnav" aria-label="Settings Pages">
         <button type="button" class="active" data-subview-button="settings" data-subview="app">App</button>
+        <button type="button" data-subview-button="settings" data-subview="adaptive">Adaptive</button>
         <button type="button" data-subview-button="settings" data-subview="sensors">Sensors</button>
         <button type="button" data-subview-button="settings" data-subview="grouping">Grouping</button>
         <button type="button" data-subview-button="settings" data-subview="spill">Spill</button>
@@ -1015,6 +1030,32 @@ INDEX_HTML = """<!doctype html>
               </div>
             </div>
           </div>
+        </section>
+      </div>
+      <div id="settings-adaptive" class="subview">
+        <section>
+          <h2>Adaptive</h2>
+          <div class="cards" id="adaptive-status"></div>
+          <article class="card">
+            <div class="field-grid">
+              <div class="field">
+                <label>Control Mode</label>
+                <select id="adaptive-mode">
+                  <option value="off">Off</option>
+                  <option value="recommend">Recommend</option>
+                  <option value="auto_off">Auto Off</option>
+                  <option value="adaptive">Adaptive</option>
+                </select>
+              </div>
+              <div class="field"><label>Cool Differential</label><input id="adaptive-cool-diff" type="number" min="0" max="15" step="1"></div>
+              <div class="field"><label>Cool Comfort Limit</label><input id="adaptive-cool-comfort-temp" type="number" min="16" max="32" step="1"></div>
+              <div class="field"><label>Heat Differential</label><input id="adaptive-heat-diff" type="number" min="0" max="15" step="1"></div>
+              <div class="field"><label>Heat Comfort Limit</label><input id="adaptive-heat-comfort-temp" type="number" min="16" max="32" step="1"></div>
+              <div class="field"><label>Check Interval</label><input id="adaptive-check-interval" type="number" min="5" max="3600" step="5"></div>
+              <div class="field"><label>Command Cooldown</label><input id="adaptive-command-cooldown" type="number" min="1" max="7200" step="10"></div>
+            </div>
+            <div class="service-actions"><button type="button" data-adaptive-save="true">Save Adaptive</button></div>
+          </article>
         </section>
       </div>
       <div id="settings-sensors" class="subview">
@@ -1171,6 +1212,17 @@ INDEX_HTML = """<!doctype html>
       return `${formatted}°`;
     }
 
+    function formatExternalTemp(value, unit = "C", digits = null) {
+      if (value === undefined || value === null) return "";
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "";
+      const suffix = String(unit || "C").toUpperCase().includes("F") ? "°F" : "°";
+      const formatted = digits === null
+        ? (Number.isInteger(number) ? String(number) : number.toFixed(1))
+        : number.toFixed(digits);
+      return `${formatted}${suffix}`;
+    }
+
     function temperatureHistoryLine(history = []) {
       const entries = history
         .filter((entry) => Number.isFinite(Number(entry.temperature)))
@@ -1263,22 +1315,14 @@ INDEX_HTML = """<!doctype html>
       return fans[value] || text(value);
     }
 
-    function detectAirTouchModel(state) {
-      const system = state.system || {};
-      const fields = [
-        system.system_name,
-        system.device_id,
-        system.hardware_version_raw,
-        system.firmware_version_raw,
-        system.boot_version_raw,
-        system.version_or_flags,
-        system.gateway_info && system.gateway_info.text,
-        system.debug_info && system.debug_info.text,
-        system.expanded && system.expanded.software_version
-      ].filter(Boolean).join(" ");
-      if (/\\b(?:airtouch\\s*5|at5)\\b/i.test(fields)) return "AirTouch 5";
-      if (/\\b(?:airtouch\\s*4|at4)\\b/i.test(fields)) return "AirTouch 4";
-      return "AirTouch 4";
+    function formatProtocol(runtime) {
+      const profile = runtime.protocol_name || titleText(runtime.protocol || "at4");
+      const mode = text(runtime.protocol_mode || "auto").toUpperCase();
+      const detected = runtime.detected_protocol ? titleText(runtime.detected_protocol) : "";
+      if (runtime.protocol_mismatch) {
+        return `${profile} / ${mode} / Mismatch${detected ? ` ${detected}` : ""}`;
+      }
+      return detected ? `${profile} / ${mode} / Detected ${detected}` : `${profile} / ${mode}`;
     }
 
     function collectAlerts(controller, state, integrations, transactions) {
@@ -1300,6 +1344,13 @@ INDEX_HTML = """<!doctype html>
       const errorResolver = integrations && integrations.error_resolver;
       if (errorResolver && errorResolver.enabled && errorResolver.last_error) {
         alerts.push(`Error lookup: ${describeControllerError(errorResolver.last_error)}`);
+      }
+      const adaptive = integrations && integrations.adaptive;
+      if (adaptive && Array.isArray(adaptive.errors)) {
+        adaptive.errors.forEach((error) => alerts.push(`Adaptive: ${describeControllerError(error)}`));
+      }
+      if (adaptive && adaptive.mode === "recommend" && Array.isArray(adaptive.recommendations)) {
+        adaptive.recommendations.forEach((message) => alerts.push(`Adaptive: ${message}`));
       }
       const failedTransactions = transactions && Array.isArray(transactions.failed) ? transactions.failed.length : 0;
       if (failedTransactions > 0) alerts.push(`Bus transactions failed: ${failedTransactions}`);
@@ -1374,7 +1425,7 @@ INDEX_HTML = """<!doctype html>
         return;
       }
       const unit = weather.temperature_unit || "C";
-      const tempText = weather.temperature === undefined || weather.temperature === null ? "" : `${weather.temperature} ${unit}`;
+      const tempText = formatExternalTemp(weather.temperature, unit);
       const humidityText = weather.humidity === undefined || weather.humidity === null ? "" : `${weather.humidity}%`;
       const icon = weatherIcon(weather.state);
       chip.innerHTML = [
@@ -1413,7 +1464,7 @@ INDEX_HTML = """<!doctype html>
       const tempUnit = (indoor && indoor.temperature_unit) || "C";
       const humidityUnit = (indoor && indoor.humidity_unit) || "%";
       const tempText = hasIndoorTemp
-        ? `${indoor.temperature} ${tempUnit}`
+        ? formatExternalTemp(indoor.temperature, tempUnit)
         : (average === null ? "" : formatTemp(average, 1));
       const humidityText = hasIndoorHumidity ? `${indoor.humidity} ${humidityUnit}` : "";
       chip.innerHTML = [
@@ -1422,6 +1473,43 @@ INDEX_HTML = """<!doctype html>
         humidityText ? `<span>${escapeHtml(humidityText)}</span>` : ""
       ].filter(Boolean).join(" ");
       chip.classList.add("active");
+    }
+
+    function renderAdaptive(adaptive = {}, config = {}) {
+      const current = adaptive.config || config || {};
+      const setValue = (id, value) => {
+        const element = $(id);
+        if (element && document.activeElement !== element) element.value = value ?? "";
+      };
+      setValue("adaptive-mode", current.mode || adaptive.mode || "off");
+      setValue("adaptive-cool-diff", current.cool_diff ?? 4);
+      setValue("adaptive-cool-comfort-temp", current.cool_comfort_temp ?? 24);
+      setValue("adaptive-heat-diff", current.heat_diff ?? 4);
+      setValue("adaptive-heat-comfort-temp", current.heat_comfort_temp ?? 20);
+      setValue("adaptive-check-interval", current.check_interval ?? 60);
+      setValue("adaptive-command-cooldown", current.command_cooldown ?? 300);
+      const outside = adaptive.outside_temperature === undefined || adaptive.outside_temperature === null
+        ? "-"
+        : formatTemp(adaptive.outside_temperature, 1);
+      const recommendations = Array.isArray(adaptive.recommendations) ? adaptive.recommendations : [];
+      const actions = Array.isArray(adaptive.actions) ? adaptive.actions : [];
+      const errors = Array.isArray(adaptive.errors) ? adaptive.errors : [];
+      $("adaptive-status").innerHTML = [
+        metric("Mode", titleText(adaptive.mode || current.mode || "off")),
+        metric("Outside", outside),
+        metric("Active AC", (adaptive.active_ac || []).join(", ") || "-"),
+        metric("Active Zones", (adaptive.active_groups || []).map((item) => Number(item) + 1).join(", ") || "-"),
+        infoCard("Recommendations", recommendations.join(" / ") || "None"),
+        infoCard("Actions", actions.join(" / ") || "None"),
+        errors.length ? infoCard("Errors", errors.join(" / ")) : "",
+      ].filter(Boolean).join("");
+    }
+
+    function supplyAirText(items = []) {
+      return items.map((item) => {
+        if (item.temperature !== undefined && item.temperature !== null) return formatTemp(item.temperature);
+        return item.status || "-";
+      }).join(", ");
     }
 
     function weatherIcon(condition) {
@@ -1522,6 +1610,33 @@ INDEX_HTML = """<!doctype html>
       });
     }
 
+    function acForZone(state, groupId) {
+      const group = Number(groupId);
+      const acs = state.acs || {};
+      const entries = Object.entries(acs);
+      for (const [id, ac] of entries) {
+        const base = (ac || {}).base || {};
+        if (Number.isInteger(base.group_start) && Number.isInteger(base.group_count)) {
+          const start = base.group_start;
+          const end = start + base.group_count;
+          if (group >= start && group < end) return [id, ac];
+        }
+      }
+      return entries.length === 1 ? entries[0] : null;
+    }
+
+    function setpointLimitsForZone(state, groupId) {
+      const entry = acForZone(state, groupId);
+      if (!entry) return {min: 4, max: 35};
+      const settings = (entry[1] || {}).settings || {};
+      const min = finiteNumber(settings.min_setpoint);
+      const max = finiteNumber(settings.max_setpoint);
+      return {
+        min: Math.max(4, min === null ? 4 : min),
+        max: Math.min(35, max === null ? 35 : max),
+      };
+    }
+
     function ledStateFromHealth(health, led) {
       const label = health.ok ? "Running" : titleText(health.error, text(health.status, "Error"));
       if (!health.ok) {
@@ -1589,6 +1704,7 @@ INDEX_HTML = """<!doctype html>
 
     function configuredFanOptions(settings) {
       const values = (settings || {}).fan_values || {};
+      const hasConfiguredValues = Object.keys(values).length > 0;
       const options = [
         ["auto", "Auto", 0],
         ["quiet", "Quiet", null],
@@ -1602,7 +1718,9 @@ INDEX_HTML = """<!doctype html>
       const configured = [];
       options.forEach(([key, label, fallback]) => {
         const value = finiteNumber(values[key]);
-        const fanValue = value !== null && value > 0 ? value : fallback;
+        const fanValue = value !== null ? value : fallback;
+        if (value !== null && (fanValue < 0 || fanValue > 6)) return;
+        if (value === null && hasConfiguredValues) return;
         if (fanValue === null || seen.has(fanValue)) return;
         seen.add(fanValue);
         configured.push([fanValue, label, key]);
@@ -1626,7 +1744,7 @@ INDEX_HTML = """<!doctype html>
           .filter((zoneStatus) => zoneStatus.sensor_control === true)
           .map((zoneStatus) => zoneStatus.setpoint)
       );
-      const activeTemperature = averageNumbers(activeSensorGroups.map((zoneStatus) => zoneStatus.temperature));
+      const controlTemperature = finiteNumber(status.sensor_temp ?? status.temperature ?? status.current_temp);
       const mappedSensorTemperature = averageNumbers(
         (zoneEntries || [])
           .map(([_id, group]) => (group.status || {}))
@@ -1640,15 +1758,15 @@ INDEX_HTML = """<!doctype html>
           .map((zoneStatus) => zoneStatus.temperature)
       );
       const statusSetpoint = finiteNumber(status.setpoint);
-      const statusTemperature = finiteNumber(status.sensor_temp ?? status.temperature ?? status.current_temp);
+      const fallbackTemperature = mappedSensorTemperature ?? anyTemperature;
       return {
         min,
         max,
         setpoint: hasActiveSensorZone ? activeSetpoint ?? statusSetpoint : null,
-        current: activeTemperature ?? mappedSensorTemperature ?? anyTemperature ?? statusTemperature,
+        current: controlTemperature ?? fallbackTemperature,
         showSetpoint: hasActiveSensorZone,
         canChangeSetpoint: hasActiveSensorZone && !allActiveSensorZonesUseTempControl,
-        source: activeSetpoint !== null ? "active_zones" : mappedSensorTemperature !== null ? "mapped_zones" : anyTemperature !== null ? "zone_average" : "ac_status",
+        source: controlTemperature !== null ? "AC Control Temp" : mappedSensorTemperature !== null ? "Mapped Zone Avg" : anyTemperature !== null ? "Zone Avg" : "No Temp",
       };
     }
 
@@ -1682,15 +1800,19 @@ INDEX_HTML = """<!doctype html>
         ? `
               <div class="thermostat-sub">Setpoint</div>
               <div class="thermostat-value">${escapeHtml(setpointText)}</div>
-              <div class="thermostat-sub">Now ${escapeHtml(currentText)}</div>`
+              <div class="thermostat-sub">${escapeHtml(thermostat.source)} ${escapeHtml(currentText)}</div>`
         : `
-              <div class="thermostat-sub">Current</div>
+              <div class="thermostat-sub">${escapeHtml(thermostat.source)}</div>
               <div class="thermostat-value">${escapeHtml(currentText)}</div>`;
+      const nextSetpointDown = setpoint === null ? "" : Math.max(thermostat.min, setpoint - 1);
+      const nextSetpointUp = setpoint === null ? "" : Math.min(thermostat.max, setpoint + 1);
+      const atMin = setpoint !== null && setpoint <= thermostat.min;
+      const atMax = setpoint !== null && setpoint >= thermostat.max;
       const setpointControls = thermostat.showSetpoint && thermostat.canChangeSetpoint
         ? `<div class="thermostat-stepper">
-            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint - 1}" ${pending || setpoint === null ? "disabled" : ""}>-</button>
+            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${nextSetpointDown}" ${pending || setpoint === null || atMin ? "disabled" : ""}>-</button>
             <div class="thermostat-range">${escapeHtml(rangeText)}</div>
-            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint + 1}" ${pending || setpoint === null ? "disabled" : ""}>+</button>
+            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${nextSetpointUp}" ${pending || setpoint === null || atMax ? "disabled" : ""}>+</button>
           </div>`
         : "";
       const modes = configuredModeOptions(settings);
@@ -1763,6 +1885,11 @@ INDEX_HTML = """<!doctype html>
       const isSpill = group.spill_configured || status.spill_on;
       const sensorControl = status.sensor_control === true;
       const setpoint = Number.isInteger(status.setpoint) ? status.setpoint : null;
+      const setpointLimits = setpointLimitsForZone(latestState, id);
+      const nextSetpointDown = setpoint === null ? "" : Math.max(setpointLimits.min, setpoint - 1);
+      const nextSetpointUp = setpoint === null ? "" : Math.min(setpointLimits.max, setpoint + 1);
+      const atMin = setpoint !== null && setpoint <= setpointLimits.min;
+      const atMax = setpoint !== null && setpoint >= setpointLimits.max;
       const percentage = damper === null ? null : damper;
       const pending = pendingGroups.has(String(id));
       const roomTemp = status.has_sensor ? temp(status.temperature) : "-";
@@ -1791,8 +1918,8 @@ INDEX_HTML = """<!doctype html>
         : `<input class="zone-slider" type="range" min="0" max="100" step="5" value="${percentage === null ? 0 : percentage}" data-action="group-percentage" data-group="${escapeHtml(id)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>`;
       const valueButtons = sensorControl
         ? `
-          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint - 1}" ${pending || setpoint === null || !isOn ? "disabled" : ""}>Set -</button>
-          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint + 1}" ${pending || setpoint === null || !isOn ? "disabled" : ""}>Set +</button>`
+          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${nextSetpointDown}" ${pending || setpoint === null || !isOn || atMin ? "disabled" : ""}>Set -</button>
+          <button type="button" class="secondary" data-action="group-setpoint" data-group="${escapeHtml(id)}" data-setpoint="${nextSetpointUp}" ${pending || setpoint === null || !isOn || atMax ? "disabled" : ""}>Set +</button>`
         : `
           <button type="button" class="secondary" data-action="group-percentage" data-group="${escapeHtml(id)}" data-percentage="${percentage === null ? "" : Math.max(0, percentage - 10)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>-10%</button>
           <button type="button" class="secondary" data-action="group-percentage" data-group="${escapeHtml(id)}" data-percentage="${percentage === null ? "" : Math.min(100, percentage + 10)}" ${pending || percentage === null || !isOn ? "disabled" : ""}>+10%</button>`;
@@ -2201,7 +2328,7 @@ INDEX_HTML = """<!doctype html>
         </article>
         ${metric("Password Pages", Object.keys(state.password || {}).length)}
         ${metric("Last LED", (state.last_led || {}).led_code ?? "-")}
-        ${metric("Supply Air", (system.supply_air || []).map((item) => item.status || item.temperature || "-").join(", ") || "-")}
+        ${metric("Supply Air", supplyAirText(system.supply_air || []) || "-")}
         ${metric("Touchpads", (((system.sensor_list || {}).touchpad_addresses) || []).map((item) => `0x${Number(item).toString(16).toUpperCase()}`).join(", ") || "-")}
         ${metric("Runtime", (system.expanded || {}).software_version || "-")}`;
     }
@@ -2220,6 +2347,7 @@ INDEX_HTML = """<!doctype html>
       renderAlerts(collectAlerts(controller, state, integrations, transactions));
       renderWeather(integrations);
       renderIndoor(integrations, state);
+      renderAdaptive(integrations.adaptive || {}, config.adaptive || {});
       setStatus(latestHealth, state.last_led || null);
       const acEntries = visibleAcs(state);
       if (!acEntries.some(([id]) => Number(id) === selectedAc)) selectedAc = Number(acEntries[0] && acEntries[0][0]) || 0;
@@ -2230,7 +2358,7 @@ INDEX_HTML = """<!doctype html>
       }).length;
 
       $("metrics").innerHTML = [
-        metric("Protocol", detectAirTouchModel(state)),
+        metric("Protocol", formatProtocol(runtime)),
         metric("Service", titleText(controller.status, "-")),
         metric("Transport", titleText(config.transport)),
         metric("Endpoint", config.transport === "tcp_serial" ? `${config.tcp_host}:${config.tcp_port}` : config.port),
@@ -2308,6 +2436,19 @@ INDEX_HTML = """<!doctype html>
       return response.json();
     }
 
+    async function sendAdaptiveConfig(data) {
+      const response = await fetch(apiPath("adaptive"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Adaptive update failed: ${response.status}`);
+      }
+      return response.json();
+    }
+
     document.querySelector(".nav").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-view-button]");
       if (!button) return;
@@ -2333,6 +2474,33 @@ INDEX_HTML = """<!doctype html>
       selectedTheme = button.dataset.themeChoice;
       localStorage.setItem(THEME_KEY, selectedTheme);
       applyTheme();
+    });
+
+    $("view-settings").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-adaptive-save]");
+      if (!button) return;
+      button.disabled = true;
+      const previous = button.textContent;
+      button.textContent = "Saving";
+      try {
+        await sendAdaptiveConfig({
+          mode: $("adaptive-mode").value,
+          cool_diff: Number($("adaptive-cool-diff").value),
+          cool_comfort_temp: Number($("adaptive-cool-comfort-temp").value),
+          heat_diff: Number($("adaptive-heat-diff").value),
+          heat_comfort_temp: Number($("adaptive-heat-comfort-temp").value),
+          check_interval: Number($("adaptive-check-interval").value),
+          command_cooldown: Number($("adaptive-command-cooldown").value),
+        });
+        setTimeout(refresh, 300);
+      } catch (err) {
+        setStatus({ok: false, error: err.message});
+      } finally {
+        setTimeout(() => {
+          button.disabled = false;
+          button.textContent = previous;
+        }, 900);
+      }
     });
 
     if (window.matchMedia) {
