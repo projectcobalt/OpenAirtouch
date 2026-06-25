@@ -138,5 +138,5 @@ if [[ "${REMOTE_ERROR_RESOLUTION}" == "true" ]]; then
     ARGS+=("--remote-error-resolution")
 fi
 
-echo "Starting AirTouch 4 touchpad host with ${TRANSPORT}"
+echo "Starting OpenAirtouch with ${TRANSPORT}"
 exec /opt/airtouch4/venv/bin/python /opt/airtouch4/scripts/airtouch_service.py "${ARGS[@]}"

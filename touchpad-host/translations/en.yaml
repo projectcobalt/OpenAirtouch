@@ -3,100 +3,100 @@ configuration:
     name: Transport
     description: Choose whether the AirTouch RS485 bus is connected directly to Home Assistant or exposed through a TCP serial bridge.
   serial_port:
-    name: Serial port
+    name: Serial Port
     description: Local USB-RS485 device path, used only when Transport is local_serial.
   baudrate:
     name: Baudrate
     description: Serial baud rate for the AirTouch bus.
   tcp_host:
-    name: TCP serial host
+    name: TCP Serial Host
     description: Hostname or IP address of the serial-over-TCP bridge, used only when Transport is tcp_serial.
   tcp_port:
-    name: TCP serial port
+    name: TCP Serial Port
     description: TCP port of the serial-over-TCP bridge.
   reconnect_interval:
-    name: Reconnect interval
+    name: Reconnect Interval
     description: Seconds to wait before retrying after a serial or TCP transport failure.
   source_address:
-    name: Touchpad address
+    name: Touchpad Address
     description: Preferred touchpad address. Auto is recommended so the host avoids any existing touchpad.
   force_source_address:
-    name: Force address
+    name: Force Address
     description: Lab override that allows using an occupied touchpad address.
   detect_seconds:
-    name: Detection window
+    name: Detection Window
     description: Seconds to listen for existing touchpads before starting the fresh boot initialisation.
   heartbeat_interval:
-    name: Heartbeat interval
+    name: Heartbeat Interval
     description: Seconds between touchpad heartbeat messages.
   touchpad_temperature_sensor:
-    name: Temperature sensor
+    name: Temperature Sensor
     description: Optional Home Assistant sensor entity ID used for the emulated touchpad temperature at startup.
   touchpad_temperature:
-    name: Touchpad temperature
+    name: Touchpad Temperature
     description: Fallback temperature reported by the emulated touchpad heartbeat when no sensor is configured or readable.
   heartbeat_payload:
-    name: Heartbeat payload
+    name: Heartbeat Payload
     description: Optional raw hex override for the touchpad heartbeat; leave blank to use Touchpad temperature.
   bus_log:
-    name: Bus log
+    name: Bus Log
     description: Write RX, TX, status, and transaction events to persistent add-on storage.
   ui_theme:
-    name: UI theme
+    name: UI Theme
     description: Default display theme for the ingress UI. System follows the browser or Home Assistant theme, and the header toggle can override it locally.
   weather_entity:
-    name: Weather entity
+    name: Weather Entity
     description: Optional Home Assistant weather entity to display in the app header, for example weather.home.
   indoor_temperature_entity:
-    name: Indoor temperature entity
+    name: Indoor Temperature Entity
     description: Optional Home Assistant temperature sensor entity to display under the outside weather chip.
   indoor_humidity_entity:
-    name: Indoor humidity entity
+    name: Indoor Humidity Entity
     description: Optional Home Assistant humidity sensor entity to display under the outside weather chip.
   weather_poll_interval:
-    name: Weather poll interval
+    name: Weather Poll Interval
     description: Seconds between local Home Assistant weather and indoor sensor reads.
   mqtt_enabled:
-    name: MQTT publishing
+    name: MQTT Publishing
     description: Publish AirTouch state and read-only climate discovery to MQTT.
   mqtt_host:
-    name: MQTT host
+    name: MQTT Host
     description: MQTT broker host. Leave blank to use the Mosquitto app default host core-mosquitto.
   mqtt_port:
-    name: MQTT port
+    name: MQTT Port
     description: MQTT broker port.
   mqtt_username:
-    name: MQTT username
+    name: MQTT Username
     description: Optional MQTT username.
   mqtt_password:
-    name: MQTT password
+    name: MQTT Password
     description: Optional MQTT password.
   mqtt_discovery:
-    name: MQTT discovery
+    name: MQTT Discovery
     description: Publish Home Assistant discovery for read-only AirTouch climate entities.
   mqtt_discovery_prefix:
-    name: MQTT discovery prefix
+    name: MQTT Discovery Prefix
     description: Home Assistant MQTT discovery prefix.
   mqtt_topic_prefix:
-    name: MQTT topic prefix
+    name: MQTT Topic Prefix
     description: Base topic used for AirTouch state publishing.
   mqtt_publish_interval:
-    name: MQTT publish interval
+    name: MQTT Publish Interval
     description: Seconds between MQTT state publishes.
   remote_error_resolution:
-    name: Remote error lookup
+    name: Remote Error Lookup
     description: Resolve AC fault descriptions through the AirTouch update endpoint after local APK tables are checked.
   remote_error_cache_days:
-    name: Error cache days
+    name: Error Cache Days
     description: Days to keep successful remote fault descriptions in persistent add-on storage.
   remote_error_device_id:
-    name: Error lookup device ID
+    name: Error Lookup Device ID
     description: Optional device ID sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
   remote_error_serial:
-    name: Error lookup serial
+    name: Error Lookup Serial
     description: Optional serial number sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
   log_level:
-    name: Log level
+    name: Log Level
     description: Uvicorn service log level.
 network:
   8099/tcp: HTTP API

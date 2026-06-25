@@ -8,7 +8,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AirTouch 4</title>
+  <title>OpenAirtouch</title>
   <style>
     :root {
       color-scheme: light;
@@ -27,6 +27,7 @@ INDEX_HTML = """<!doctype html>
       --cool: #2d6cdf;
       --warm: #b45f06;
       --led-blue: #1e88ff;
+      --led-purple: #8b5cf6;
       --led-red: #e02b20;
       --led-amber: #d18b00;
       --header: #16212c;
@@ -56,6 +57,7 @@ INDEX_HTML = """<!doctype html>
       --cool: #73a7ff;
       --warm: #f0a650;
       --led-blue: #49a8ff;
+      --led-purple: #a78bfa;
       --led-red: #ff5a4f;
       --led-amber: #f0b23e;
       --header: #0b1117;
@@ -71,11 +73,7 @@ INDEX_HTML = """<!doctype html>
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background:
-        radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent) 0, transparent 340px),
-        radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--ok) 10%, transparent) 0, transparent 300px),
-        linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, transparent) 0, transparent 260px),
-        var(--bg);
+      background: var(--bg);
       color: var(--ink);
       font: 14px/1.42 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -145,6 +143,12 @@ INDEX_HTML = """<!doctype html>
     .header-status .status-text {
       display: none;
     }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
     .dot {
       width: 12px;
       height: 12px;
@@ -156,6 +160,10 @@ INDEX_HTML = """<!doctype html>
     .led-blue .dot {
       background: var(--led-blue);
       box-shadow: 0 0 0 2px rgba(255,255,255,.18), 0 0 14px color-mix(in srgb, var(--led-blue) 74%, transparent);
+    }
+    .led-purple .dot {
+      background: var(--led-purple);
+      box-shadow: 0 0 0 2px rgba(255,255,255,.18), 0 0 14px color-mix(in srgb, var(--led-purple) 74%, transparent);
     }
     .led-red .dot {
       background: var(--led-red);
@@ -323,7 +331,7 @@ INDEX_HTML = """<!doctype html>
     }
     .ac-select-card.active {
       border-color: var(--accent);
-      background: linear-gradient(135deg, var(--accent-soft), var(--panel));
+      background: var(--panel);
       color: var(--ink);
       box-shadow: inset 4px 0 0 var(--accent), var(--shadow-soft);
     }
@@ -336,9 +344,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 18px;
-      background:
-        linear-gradient(160deg, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 42%),
-        var(--panel);
+      background: var(--panel);
       display: grid;
       gap: 16px;
       min-height: 430px;
@@ -346,14 +352,10 @@ INDEX_HTML = """<!doctype html>
     }
     .ac-panel.on {
       border-color: color-mix(in srgb, var(--ok) 54%, var(--line));
-      background:
-        linear-gradient(160deg, color-mix(in srgb, var(--ok) 16%, transparent) 0%, transparent 48%),
-        var(--panel);
+      background: var(--panel);
     }
     .ac-panel.off {
-      background:
-        linear-gradient(160deg, color-mix(in srgb, var(--muted) 12%, transparent) 0%, transparent 48%),
-        color-mix(in srgb, var(--panel) 62%, var(--bg));
+      background: color-mix(in srgb, var(--panel) 62%, var(--bg));
     }
     .ac-panel.off .thermostat-face,
     .ac-panel.off .ac-mode-bank,
@@ -385,23 +387,14 @@ INDEX_HTML = """<!doctype html>
       aspect-ratio: 1;
       margin: 0 auto 2px;
       border-radius: 999px;
-      border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
       background:
-        radial-gradient(circle at center, var(--lcd) 0 50%, transparent 51%),
-        conic-gradient(from 225deg, var(--cool) 0 50%, var(--warm) 50% 100%);
-      box-shadow: inset 0 0 0 14px color-mix(in srgb, var(--panel) 76%, transparent), var(--shadow-soft);
+        radial-gradient(circle at center, var(--lcd) 0 60%, transparent 61%),
+        conic-gradient(from 225deg, var(--cool) 0deg, var(--warm) 270deg, transparent 270deg 360deg);
+      box-shadow: var(--shadow-soft);
       display: grid;
       place-items: center;
       position: relative;
       overflow: hidden;
-    }
-    .thermostat-face::after {
-      content: "";
-      position: absolute;
-      inset: 17px;
-      border-radius: inherit;
-      border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-      pointer-events: none;
     }
     .thermostat-marker {
       position: absolute;
@@ -432,10 +425,11 @@ INDEX_HTML = """<!doctype html>
       justify-items: center;
     }
     .thermostat-value {
-      font-size: 50px;
-      line-height: .95;
+      font-size: 42px;
+      line-height: 1;
       font-weight: 800;
       letter-spacing: 0;
+      white-space: nowrap;
     }
     .thermostat-sub {
       color: var(--muted);
@@ -464,19 +458,6 @@ INDEX_HTML = """<!doctype html>
     .ac-mode-bank {
       display: grid;
       gap: 12px;
-    }
-    .ac-readings {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .ac-readings .reading {
-      min-height: 76px;
-      display: grid;
-      align-content: center;
-    }
-    .ac-readings .big {
-      font-size: 30px;
     }
     .reading {
       min-width: 0;
@@ -532,9 +513,7 @@ INDEX_HTML = """<!doctype html>
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 12px;
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--muted) 12%, transparent) 0 4px, transparent 4px),
-        var(--panel);
+      background: var(--panel);
       display: grid;
       grid-template-columns: 1fr auto;
       grid-template-areas:
@@ -559,16 +538,11 @@ INDEX_HTML = """<!doctype html>
     }
     .group-tile.on {
       border-color: color-mix(in srgb, var(--ok) 50%, var(--line));
-      background:
-        linear-gradient(180deg, var(--ok) 0 4px, transparent 4px),
-        linear-gradient(135deg, color-mix(in srgb, var(--ok) 14%, transparent) 0%, transparent 46%),
-        var(--panel);
+      background: var(--panel);
       box-shadow: 0 0 0 1px var(--surface-ring), var(--shadow-soft);
     }
     .group-tile.off {
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--muted) 28%, transparent) 0 4px, transparent 4px),
-        color-mix(in srgb, var(--panel) 60%, var(--bg));
+      background: color-mix(in srgb, var(--panel) 60%, var(--bg));
     }
     .group-tile.off .group-name,
     .group-tile.off .group-num {
@@ -580,10 +554,7 @@ INDEX_HTML = """<!doctype html>
     }
     .group-tile.spill {
       border-color: color-mix(in srgb, var(--warn) 56%, var(--line));
-      background:
-        linear-gradient(180deg, var(--warn) 0 4px, transparent 4px),
-        linear-gradient(135deg, color-mix(in srgb, var(--warn) 16%, transparent) 0%, transparent 46%),
-        var(--panel);
+      background: var(--panel);
     }
     .group-head {
       grid-area: head;
@@ -944,9 +915,11 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
   <header>
-    <h1 id="app-title">AirTouch 4</h1>
-    <div class="header-actions">
+    <div class="brand">
       <div id="status" class="status header-status led-amber" title="Connecting" aria-label="Connecting"><span class="dot"></span><span class="status-text">Connecting</span></div>
+      <h1 id="app-title">OpenAirtouch</h1>
+    </div>
+    <div class="header-actions">
       <div class="chip-stack">
         <div id="weather-chip" class="weather-chip"></div>
         <div id="indoor-chip" class="weather-chip"></div>
@@ -963,7 +936,7 @@ INDEX_HTML = """<!doctype html>
       <div id="error-strip" class="error-strip" aria-live="polite"><div id="error-track" class="error-track"></div></div>
       <div class="control-grid">
         <section>
-          <div class="section-title"><strong id="zone-count">0</strong><span>Zones</span><span id="zone-active-count" class="count-detail">0 active</span></div>
+          <div class="section-title"><strong id="zone-count">0</strong><span>Zones</span><span id="zone-active-count" class="count-detail">0 Active</span></div>
           <div class="zone-toolbar">
             <div class="zone-pages" id="zone-pages"></div>
           </div>
@@ -978,7 +951,7 @@ INDEX_HTML = """<!doctype html>
     </div>
 
     <div id="view-programs" class="view">
-      <div class="subnav" aria-label="Favourites and programs">
+      <div class="subnav" aria-label="Favourites And Programs">
         <button type="button" class="active" data-subview-button="programs" data-subview="favourites">Favourites</button>
         <button type="button" data-subview-button="programs" data-subview="program-list">Programs</button>
         <button type="button" data-subview-button="programs" data-subview="ac-timer">AC Timer</button>
@@ -1018,7 +991,7 @@ INDEX_HTML = """<!doctype html>
     </div>
 
     <div id="view-settings" class="view">
-      <div class="subnav" aria-label="Settings pages">
+      <div class="subnav" aria-label="Settings Pages">
         <button type="button" class="active" data-subview-button="settings" data-subview="app">App</button>
         <button type="button" data-subview-button="settings" data-subview="sensors">Sensors</button>
         <button type="button" data-subview-button="settings" data-subview="grouping">Grouping</button>
@@ -1089,7 +1062,7 @@ INDEX_HTML = """<!doctype html>
           <h2>Parameters</h2>
           <div class="field-grid">
             <div class="field">
-              <label for="system-name-input">System name</label>
+              <label for="system-name-input">System Name</label>
               <input id="system-name-input" maxlength="16" autocomplete="off">
             </div>
             <button type="button" data-service-action="preference">Save Name</button>
@@ -1102,11 +1075,11 @@ INDEX_HTML = """<!doctype html>
           <h2>System Info</h2>
           <div class="field-grid">
             <div class="field">
-              <label for="service-company-input">Service company</label>
+              <label for="service-company-input">Service Company</label>
               <input id="service-company-input" maxlength="10" autocomplete="off">
             </div>
             <div class="field">
-              <label for="service-phone-input">Service phone</label>
+              <label for="service-phone-input">Service Phone</label>
               <input id="service-phone-input" maxlength="12" autocomplete="off">
             </div>
             <button type="button" data-service-action="service-contact">Save Service</button>
@@ -1158,6 +1131,14 @@ INDEX_HTML = """<!doctype html>
       }[char]));
     }
 
+    function titleText(value, fallback = "-") {
+      const raw = text(value, fallback).replace(/_/g, " ");
+      if (raw === "-") return raw;
+      return raw
+        .replace(/\b([a-z])/g, (match) => match.toUpperCase())
+        .replace(/\b(Ac|Led|Mqtt|Tcp|Ui|Rx|Tx|Ok)\b/g, (match) => match.toUpperCase());
+    }
+
     function row(cells) {
       return "<tr>" + cells.map((cell) => "<td>" + escapeHtml(cell) + "</td>").join("") + "</tr>";
     }
@@ -1177,7 +1158,17 @@ INDEX_HTML = """<!doctype html>
     }
 
     function temp(value) {
-      return value === undefined || value === null ? "-" : `${value} C`;
+      return formatTemp(value);
+    }
+
+    function formatTemp(value, digits = null) {
+      if (value === undefined || value === null) return "-";
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "-";
+      const formatted = digits === null
+        ? (Number.isInteger(number) ? String(number) : number.toFixed(1))
+        : number.toFixed(digits);
+      return `${formatted}°`;
     }
 
     function temperatureHistoryLine(history = []) {
@@ -1227,12 +1218,12 @@ INDEX_HTML = """<!doctype html>
 
     function timerFields(prefix, timer = {}) {
       return `
-        <div class="field"><label>${prefix} enabled</label><select data-field="${prefix.toLowerCase()}-enabled">
+        <div class="field"><label>${prefix} Enabled</label><select data-field="${prefix.toLowerCase()}-enabled">
           <option value="true" ${timer.enabled ? "selected" : ""}>On</option>
           <option value="false" ${!timer.enabled ? "selected" : ""}>Off</option>
         </select></div>
-        <div class="field"><label>${prefix} hour</label><input data-field="${prefix.toLowerCase()}-hour" type="number" min="0" max="23" value="${escapeHtml(timer.hour ?? 0)}"></div>
-        <div class="field"><label>${prefix} min</label><input data-field="${prefix.toLowerCase()}-minute" type="number" min="0" max="59" value="${escapeHtml(timer.minute ?? 0)}"></div>`;
+        <div class="field"><label>${prefix} Hour</label><input data-field="${prefix.toLowerCase()}-hour" type="number" min="0" max="23" value="${escapeHtml(timer.hour ?? 0)}"></div>
+        <div class="field"><label>${prefix} Min</label><input data-field="${prefix.toLowerCase()}-minute" type="number" min="0" max="59" value="${escapeHtml(timer.minute ?? 0)}"></div>`;
     }
 
     function boolSelect(field, label, value) {
@@ -1263,12 +1254,12 @@ INDEX_HTML = """<!doctype html>
     }
 
     function modeName(value) {
-      const modes = {0: "auto", 1: "heat", 2: "dry", 3: "fan", 4: "cool", 7: "-"};
+      const modes = {0: "Auto", 1: "Heat", 2: "Dry", 3: "Fan", 4: "Cool", 7: "-"};
       return modes[value] || text(value);
     }
 
     function fanName(value) {
-      const fans = {0: "auto", 1: "low", 2: "med", 3: "high", 7: "-"};
+      const fans = {0: "Auto", 1: "Low", 2: "Med", 3: "High", 7: "-"};
       return fans[value] || text(value);
     }
 
@@ -1329,10 +1320,10 @@ INDEX_HTML = """<!doctype html>
 
     function describeControllerError(error) {
       const message = text(error);
-      if (/ConnectionRefusedError|ECONNREFUSED/i.test(message)) return `Runtime connection refused: ${message}`;
-      if (/TimeoutError|timed out/i.test(message)) return `Runtime timeout: ${message}`;
-      if (/SerialException|could not open port/i.test(message)) return `Serial transport error: ${message}`;
-      if (/mqtt/i.test(message)) return `MQTT error: ${message}`;
+      if (/ConnectionRefusedError|ECONNREFUSED/i.test(message)) return `Runtime Connection Refused: ${message}`;
+      if (/TimeoutError|timed out/i.test(message)) return `Runtime Timeout: ${message}`;
+      if (/SerialException|could not open port/i.test(message)) return `Serial Transport Error: ${message}`;
+      if (/mqtt/i.test(message)) return `MQTT Error: ${message}`;
       return message;
     }
 
@@ -1341,8 +1332,8 @@ INDEX_HTML = """<!doctype html>
         return display.description ? `${display.label}: ${display.description}` : display.label;
       }
       const number = Number(code);
-      if (number === 65534) return "Code: FFFE: Error in the communication of the gateway with the main module.";
-      if (number === 65535) return "Code: FFFF: Error in the communication of the gateway with the AC unit.";
+      if (number === 65534) return "Code: FFFE: Error In The Communication Of The Gateway With The Main Module.";
+      if (number === 65535) return "Code: FFFF: Error In The Communication Of The Gateway With The AC Unit.";
       return `Code: ${Number.isFinite(number) ? number : text(code)}`;
     }
 
@@ -1423,7 +1414,7 @@ INDEX_HTML = """<!doctype html>
       const humidityUnit = (indoor && indoor.humidity_unit) || "%";
       const tempText = hasIndoorTemp
         ? `${indoor.temperature} ${tempUnit}`
-        : (average === null ? "" : `${average.toFixed(1)} C`);
+        : (average === null ? "" : formatTemp(average, 1));
       const humidityText = hasIndoorHumidity ? `${indoor.humidity} ${humidityUnit}` : "";
       chip.innerHTML = [
         '<span class="chip-label">Indoor</span>',
@@ -1532,24 +1523,24 @@ INDEX_HTML = """<!doctype html>
     }
 
     function ledStateFromHealth(health, led) {
-      const label = health.ok ? "Running" : text(health.error, text(health.status, "Error"));
+      const label = health.ok ? "Running" : titleText(health.error, text(health.status, "Error"));
       if (!health.ok) {
         return {className: "led-red", label: `Runtime ${label}`};
       }
       const code = led && Number.isInteger(led.led_code) ? led.led_code : null;
       if (code === null) {
-        return {className: "led-amber", label: `${label} / waiting for touchpad LED`};
+        return {className: "led-amber", label: `${label} / Waiting For Touchpad LED`};
       }
       if (code === 0x00) {
-        return {className: "led-amber", label: `${label} / touchpad blue LED off (0x00)`};
+        return {className: "led-purple", label: `${label} / AC Off / No Error`};
       }
       if (code === 0x01) {
-        return {className: "led-blue", label: `${label} / touchpad blue LED on (0x01)`};
+        return {className: "led-blue", label: `${label} / AC On`};
       }
       if (code === 0x16) {
-        return {className: "led-blue-red", label: `${label} / touchpad LED alternating blue/red (0x16)`};
+        return {className: "led-blue-red", label: `${label} / Error`};
       }
-      return {className: "led-amber", label: `${label} / touchpad LED 0x${code.toString(16).toUpperCase().padStart(2, "0")}`};
+      return {className: "led-amber", label: `${label} / Unmapped LED 0x${code.toString(16).toUpperCase().padStart(2, "0")}`};
     }
 
     function setStatus(health, led = null) {
@@ -1628,6 +1619,8 @@ INDEX_HTML = """<!doctype html>
       const activeSensorGroups = activeGroups
         .map((group) => group.status || {})
         .filter((zoneStatus) => zoneStatus.has_sensor === true);
+      const hasActiveSensorZone = activeSensorGroups.length > 0;
+      const allActiveSensorZonesUseTempControl = hasActiveSensorZone && activeSensorGroups.every((zoneStatus) => zoneStatus.sensor_control === true);
       const activeSetpoint = averageNumbers(
         activeSensorGroups
           .filter((zoneStatus) => zoneStatus.sensor_control === true)
@@ -1651,8 +1644,10 @@ INDEX_HTML = """<!doctype html>
       return {
         min,
         max,
-        setpoint: activeSetpoint ?? statusSetpoint,
+        setpoint: hasActiveSensorZone ? activeSetpoint ?? statusSetpoint : null,
         current: activeTemperature ?? mappedSensorTemperature ?? anyTemperature ?? statusTemperature,
+        showSetpoint: hasActiveSensorZone,
+        canChangeSetpoint: hasActiveSensorZone && !allActiveSensorZonesUseTempControl,
         source: activeSetpoint !== null ? "active_zones" : mappedSensorTemperature !== null ? "mapped_zones" : anyTemperature !== null ? "zone_average" : "ac_status",
       };
     }
@@ -1670,6 +1665,7 @@ INDEX_HTML = """<!doctype html>
       const settings = ac.settings || {};
       const runtime = ac.runtime || {};
       const power = status.power_on === true ? "on" : status.power_on === false ? "off" : "-";
+      const powerLabel = titleText(power);
       const isOn = power === "on";
       const pending = pendingAcs.has(String(id));
       const mode = Number.isInteger(status.mode) ? status.mode : null;
@@ -1677,11 +1673,26 @@ INDEX_HTML = """<!doctype html>
       const thermostat = deriveAcThermostat(ac, zoneEntries);
       const setpoint = thermostat.setpoint === null ? null : Math.round(thermostat.setpoint);
       const current = thermostat.current === null ? null : thermostat.current;
-      const rangeText = `${thermostat.min}-${thermostat.max} C range`;
-      const currentText = current === null ? "-" : `${current.toFixed(1)} C`;
-      const setpointText = setpoint === null ? "-" : String(setpoint);
-      const setMarker = setpoint === null ? "" : `<span class="thermostat-marker thermostat-set" style="--angle:${thermostatAngle(setpoint, thermostat.min, thermostat.max)};--marker:var(--warm)" title="Set ${escapeHtml(setpointText)} C"></span>`;
+      const rangeText = `${formatTemp(thermostat.min)}-${formatTemp(thermostat.max)} Range`;
+      const currentText = current === null ? "-" : formatTemp(current, 1);
+      const setpointText = setpoint === null ? "-" : formatTemp(setpoint);
+      const setMarker = setpoint === null ? "" : `<span class="thermostat-marker thermostat-set" style="--angle:${thermostatAngle(setpoint, thermostat.min, thermostat.max)};--marker:var(--warm)" title="Set ${escapeHtml(formatTemp(setpoint))}"></span>`;
       const currentMarker = current === null ? "" : `<span class="thermostat-marker thermostat-current" style="--angle:${thermostatAngle(current, thermostat.min, thermostat.max)};--marker:var(--cool)" title="Current ${escapeHtml(currentText)}"></span>`;
+      const thermostatReadout = thermostat.showSetpoint
+        ? `
+              <div class="thermostat-sub">Setpoint</div>
+              <div class="thermostat-value">${escapeHtml(setpointText)}</div>
+              <div class="thermostat-sub">Now ${escapeHtml(currentText)}</div>`
+        : `
+              <div class="thermostat-sub">Current</div>
+              <div class="thermostat-value">${escapeHtml(currentText)}</div>`;
+      const setpointControls = thermostat.showSetpoint && thermostat.canChangeSetpoint
+        ? `<div class="thermostat-stepper">
+            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint - 1}" ${pending || setpoint === null ? "disabled" : ""}>-</button>
+            <div class="thermostat-range">${escapeHtml(rangeText)}</div>
+            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint + 1}" ${pending || setpoint === null ? "disabled" : ""}>+</button>
+          </div>`
+        : "";
       const modes = configuredModeOptions(settings);
       const fans = configuredFanOptions(settings);
       const modeLabel = (modes.find(([value]) => value === mode) || [mode, modeName(mode)])[1];
@@ -1692,10 +1703,10 @@ INDEX_HTML = """<!doctype html>
             <div>
               <div class="ac-name">${escapeHtml(base.name || `AC ${Number(id) + 1}`)}</div>
               <div class="muted ac-meta">
-                <span>${escapeHtml(modeLabel)} mode</span>
-                <span>${escapeHtml(fanLabel)} fan</span>
-                <span>${escapeHtml(runtimeHoursText(runtime))} runtime</span>
-                <span class="${isOn ? "pill on ac-state-pill" : "pill ac-state-pill"}">${escapeHtml(power)}</span>
+                <span>${escapeHtml(modeLabel)} Mode</span>
+                <span>${escapeHtml(fanLabel)} Fan</span>
+                <span>${escapeHtml(runtimeHoursText(runtime))} Runtime</span>
+                <span class="${isOn ? "pill on ac-state-pill" : "pill ac-state-pill"}">${escapeHtml(powerLabel)}</span>
               </div>
             </div>
             <button
@@ -1709,30 +1720,14 @@ INDEX_HTML = """<!doctype html>
               ${pending ? "disabled" : ""}
             >${pending ? "..." : "&#9211;"}</button>
           </div>
-          <div class="ac-readings">
-            <div class="reading">
-              <div class="label">Current</div>
-              <div class="big">${escapeHtml(currentText)}</div>
-            </div>
-            <div class="reading">
-              <div class="label">Set</div>
-              <div class="big">${escapeHtml(setpointText === "-" ? "-" : `${setpointText} C`)}</div>
-            </div>
-          </div>
           <div class="thermostat-face">
             ${currentMarker}
             ${setMarker}
             <div class="thermostat-readout">
-              <div class="thermostat-sub">Setpoint</div>
-              <div class="thermostat-value">${escapeHtml(setpointText)}</div>
-              <div class="thermostat-sub">Now ${escapeHtml(currentText)}</div>
+              ${thermostatReadout}
             </div>
           </div>
-          <div class="thermostat-stepper">
-            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint - 1}" ${pending || setpoint === null ? "disabled" : ""}>-</button>
-            <div class="thermostat-range">${escapeHtml(rangeText)}</div>
-            <button type="button" class="secondary" data-action="ac-status" data-ac="${escapeHtml(id)}" data-setpoint="${setpoint === null ? "" : setpoint + 1}" ${pending || setpoint === null ? "disabled" : ""}>+</button>
-          </div>
+          ${setpointControls}
           <div class="ac-mode-bank">
             <div>
               <div class="label">Mode</div>
@@ -1753,7 +1748,7 @@ INDEX_HTML = """<!doctype html>
       return `
         <button type="button" class="ac-select-card ${Number(id) === selectedAc ? "active" : ""}" data-action="select-ac" data-ac="${escapeHtml(id)}">
           <span class="card-title">${escapeHtml(base.name || `AC ${Number(id) + 1}`)}</span>
-          <span class="muted">${escapeHtml(power)} &middot; ${escapeHtml(modeName(status.mode))} &middot; ${escapeHtml(temp(status.setpoint))}</span>
+          <span class="muted">${escapeHtml(titleText(power))} &middot; ${escapeHtml(modeName(status.mode))} &middot; ${escapeHtml(temp(status.setpoint))}</span>
         </button>`;
     }
 
@@ -1763,6 +1758,7 @@ INDEX_HTML = """<!doctype html>
       const grouping = group.grouping || {};
       const damper = pct(status.percentage);
       const power = status.power_name || (status.power_code === 1 ? "on" : "off");
+      const powerLabel = titleText(power);
       const isOn = power === "on" || power === "turbo";
       const isSpill = group.spill_configured || status.spill_on;
       const sensorControl = status.sensor_control === true;
@@ -1783,12 +1779,12 @@ INDEX_HTML = """<!doctype html>
       if (!isOn) classes.push("off");
       if (isSpill) classes.push("spill");
       const badges = [];
-      badges.push(`<span class="${isOn ? "pill on" : "pill"}">${escapeHtml(power)}</span>`);
-      if (isSpill) badges.push('<span class="pill warn">spill</span>');
-      if (sensorControl) badges.push('<span class="pill cool">sensor</span>');
-      if (status.low_battery) badges.push('<span class="pill warn">battery</span>');
-      if (status.timer_on) badges.push('<span class="pill">program</span>');
-      if (power === "turbo" || status.turbo_supported) badges.push('<span class="pill">turbo</span>');
+      badges.push(`<span class="${isOn ? "pill on" : "pill"}">${escapeHtml(powerLabel)}</span>`);
+      if (isSpill) badges.push('<span class="pill warn">Spill</span>');
+      if (sensorControl) badges.push('<span class="pill cool">Sensor</span>');
+      if (status.low_battery) badges.push('<span class="pill warn">Battery</span>');
+      if (status.timer_on) badges.push('<span class="pill">Program</span>');
+      if (power === "turbo" || status.turbo_supported) badges.push('<span class="pill">Turbo</span>');
       if (grouping.thermostat_name) badges.push(`<span class="pill">${escapeHtml(grouping.thermostat_name)}</span>`);
       const slider = sensorControl
         ? ""
@@ -1830,7 +1826,7 @@ INDEX_HTML = """<!doctype html>
             <div class="reading">
               <div class="label">${escapeHtml(sensorControl ? "Set" : "Vent")}</div>
               <div class="small-value">${escapeHtml(valueLabel)}</div>
-              <div class="muted">${escapeHtml(status.has_sensor ? "mapped" : "no sensor")}</div>
+              <div class="muted">${escapeHtml(status.has_sensor ? "Mapped" : "No Sensor")}</div>
             </div>
           </div>
           <div class="damper">
@@ -1861,7 +1857,7 @@ INDEX_HTML = """<!doctype html>
         return `
           <article class="card" data-favourite-card="${escapeHtml(id)}">
             <div class="card-title">${escapeHtml(favourite.name || `Favourite ${Number(id) + 1}`)}</div>
-            <div class="muted">${escapeHtml(groupNames.length ? groupNames.join(", ") : "No zones selected")}</div>
+            <div class="muted">${escapeHtml(groupNames.length ? groupNames.join(", ") : "No Zones Selected")}</div>
             <div class="service-card-body">
               <div class="field-grid">
                 ${textField("favourite-name", "Name", favourite.name || "", 8)}
@@ -1873,7 +1869,7 @@ INDEX_HTML = """<!doctype html>
               </div>
             </div>
           </article>`;
-      }).join("") || '<div class="muted">No favourite data</div>';
+      }).join("") || '<div class="muted">No Favourite Data</div>';
     }
 
     function acBaseRecordsFromState() {
@@ -1982,8 +1978,8 @@ INDEX_HTML = """<!doctype html>
         return `
           <article class="card" data-program="${escapeHtml(program.program ?? _id)}">
             <div class="card-title">${escapeHtml(program.name || `Program ${(program.program ?? 0) + 1}`)}</div>
-            <div class="muted">${escapeHtml(groupNames.length ? groupNames.join(", ") : "No zones selected")}</div>
-            <div><span class="${program.enabled ? "pill on" : "pill"}">${escapeHtml(program.enabled ? "enabled" : "off")}</span></div>
+            <div class="muted">${escapeHtml(groupNames.length ? groupNames.join(", ") : "No Zones Selected")}</div>
+            <div><span class="${program.enabled ? "pill on" : "pill"}">${escapeHtml(program.enabled ? "Enabled" : "Off")}</span></div>
             <div class="muted">On ${escapeHtml(timeText(onTimer))} / Off ${escapeHtml(timeText(offTimer))}</div>
             <div class="service-card-body">
               <div class="field-grid">
@@ -1992,7 +1988,7 @@ INDEX_HTML = """<!doctype html>
                 <div class="field"><label>Days</label><input data-field="program-days" type="number" min="0" max="127" value="${escapeHtml(program.days_bitmap ?? 0)}"></div>
                 <div class="field"><label>Zones 1-8</label><input data-field="program-groups-1" type="number" min="0" max="255" value="${escapeHtml(program.groups_1_8_bitmap ?? 0)}"></div>
                 <div class="field"><label>Zones 9-16</label><input data-field="program-groups-2" type="number" min="0" max="255" value="${escapeHtml(program.groups_9_16_bitmap ?? 0)}"></div>
-                <div class="field"><label>AC mask</label><input data-field="program-acs" type="number" min="0" max="15" value="${escapeHtml(program.active_ac_bitmap ?? 0)}"></div>
+                <div class="field"><label>AC Mask</label><input data-field="program-acs" type="number" min="0" max="15" value="${escapeHtml(program.active_ac_bitmap ?? 0)}"></div>
                 ${timerFields("On", onTimer)}
                 <div class="field"><label>Setpoint</label><input data-field="program-on-setpoint" type="number" min="0" max="63" value="${escapeHtml(program.on_setpoint ?? 26)}"></div>
                 ${timerFields("Off", offTimer)}
@@ -2000,7 +1996,7 @@ INDEX_HTML = """<!doctype html>
               <div class="service-actions"><button type="button" data-program-action="program-save" data-program="${escapeHtml(program.program ?? _id)}">Save Program</button></div>
             </div>
           </article>`;
-      }).join("") || '<div class="muted">No program data</div>';
+      }).join("") || '<div class="muted">No Program Data</div>';
     }
 
     function renderProgramSupport(state) {
@@ -2022,7 +2018,7 @@ INDEX_HTML = """<!doctype html>
               <div class="service-actions"><button type="button" data-program-action="ac-timer-save" data-ac="${escapeHtml(id)}">Save Timer</button></div>
             </div>
           </article>`;
-      }).join("") || '<div class="muted">No AC timer data</div>';
+      }).join("") || '<div class="muted">No AC Timer Data</div>';
       $("program-options").textContent = JSON.stringify({
         known_programs: Object.keys(programs).length,
         active_favourite: (state.system || {}).active_favourite,
@@ -2053,7 +2049,7 @@ INDEX_HTML = """<!doctype html>
           return `
             <article class="card" data-service-group="${escapeHtml(id)}">
               <div class="card-title">${escapeHtml(groupName)}</div>
-              <div class="muted">Mapped dampers ${escapeHtml(zoneStart)}-${escapeHtml(Number(zoneStart) + Number(zoneCount) - 1)} / sensor ${escapeHtml(sensorName(thermostat))}</div>
+              <div class="muted">Mapped Dampers ${escapeHtml(zoneStart)}-${escapeHtml(Number(zoneStart) + Number(zoneCount) - 1)} / Sensor ${escapeHtml(sensorName(thermostat))}</div>
               <div class="service-card-body">
                 <div class="field-grid">
                   <div class="field"><label>Name</label><input data-field="group-name" maxlength="8" value="${escapeHtml(groupName)}"></div>
@@ -2068,7 +2064,7 @@ INDEX_HTML = """<!doctype html>
                 </div>
               </div>
             </article>`;
-        }).join("") || '<div class="muted">No grouping data</div>';
+        }).join("") || '<div class="muted">No Grouping Data</div>';
       $("spill").innerHTML = Object.entries(groups)
         .sort(([a], [b]) => Number(a) - Number(b))
         .map(([id, group]) => {
@@ -2077,13 +2073,13 @@ INDEX_HTML = """<!doctype html>
           return `
             <article class="card">
               <div class="card-title">${escapeHtml(group.name || `Zone ${Number(id) + 1}`)}</div>
-              <div class="muted">${escapeHtml(configured ? "Configured as spill/storage path" : "Normal controlled zone")}</div>
+              <div class="muted">${escapeHtml(configured ? "Configured As Spill/Storage Path" : "Normal Controlled Zone")}</div>
               <label class="check-row">
                 <input type="checkbox" data-spill-group="${escapeHtml(id)}" ${configured ? "checked" : ""}>
-                <span class="${configured ? "pill warn" : "pill"}">${configured ? "spill" : "normal"}</span>
+                <span class="${configured ? "pill warn" : "pill"}">${configured ? "Spill" : "Normal"}</span>
               </label>
             </article>`;
-        }).join("") || '<div class="muted">No spill data</div>';
+        }).join("") || '<div class="muted">No Spill Data</div>';
       $("spill").innerHTML += `
         <article class="card">
           <div class="card-title">AC Spill Mode</div>
@@ -2112,7 +2108,7 @@ INDEX_HTML = """<!doctype html>
             </td>
           </tr>`;
         }).join("")
-        : row(["-", "No balance data", "-", "-"]);
+        : row(["-", "No Balance Data", "-", "-"]);
       $("balance").innerHTML += `<tr><td colspan="4"><div class="service-actions"><button type="button" data-service-action="balance-start">Start Balance</button><button type="button" class="secondary" data-service-action="balance-stop">Stop Balance</button></div></td></tr>`;
       $("ac-setup").innerHTML = acs.map(([id, ac]) => {
         const base = ac.base || {};
@@ -2124,27 +2120,27 @@ INDEX_HTML = """<!doctype html>
         return `
           <article class="card" data-service-ac="${escapeHtml(id)}">
             <div class="card-title">${escapeHtml(base.name || `AC ${Number(id) + 1}`)}</div>
-            <div class="muted">Groups ${escapeHtml(text(base.group_start))}-${escapeHtml(Number.isInteger(base.group_start) && Number.isInteger(base.group_count) ? base.group_start + base.group_count - 1 : "-")} / brand ${escapeHtml(text(base.brand))} / hide spill ${escapeHtml(settings.hide_spill_group ? "yes" : "no")}</div>
+            <div class="muted">Groups ${escapeHtml(text(base.group_start))}-${escapeHtml(Number.isInteger(base.group_start) && Number.isInteger(base.group_count) ? base.group_start + base.group_count - 1 : "-")} / Brand ${escapeHtml(text(base.brand))} / Hide Spill ${escapeHtml(settings.hide_spill_group ? "Yes" : "No")}</div>
             <div class="service-card-body">
               <div class="field-grid">
                 <div class="field"><label>Name</label><input data-field="ac-name" maxlength="8" value="${escapeHtml(base.name || "")}"></div>
-                <div class="field"><label>Group start</label><input data-field="ac-group-start" type="number" min="0" max="63" value="${escapeHtml(base.group_start ?? 0)}"></div>
-                <div class="field"><label>Group count</label><input data-field="ac-group-count" type="number" min="0" max="63" value="${escapeHtml(base.group_count ?? 0)}"></div>
+                <div class="field"><label>Group Start</label><input data-field="ac-group-start" type="number" min="0" max="63" value="${escapeHtml(base.group_start ?? 0)}"></div>
+                <div class="field"><label>Group Count</label><input data-field="ac-group-count" type="number" min="0" max="63" value="${escapeHtml(base.group_count ?? 0)}"></div>
                 <div class="field"><label>Brand</label><input data-field="ac-brand" type="number" min="0" max="65535" value="${escapeHtml(base.brand ?? 0)}"></div>
-                <div class="field"><label>Hide spill</label><select data-field="hide-spill"><option value="true" ${settings.hide_spill_group ? "selected" : ""}>Yes</option><option value="false" ${!settings.hide_spill_group ? "selected" : ""}>No</option></select></div>
+                <div class="field"><label>Hide Spill</label><select data-field="hide-spill"><option value="true" ${settings.hide_spill_group ? "selected" : ""}>Yes</option><option value="false" ${!settings.hide_spill_group ? "selected" : ""}>No</option></select></div>
                 <div class="field"><label>Thermostat</label><input data-field="ctrl-thermostat" type="number" min="0" max="255" value="${escapeHtml(settings.ctrl_thermostat ?? 0)}"></div>
-                <div class="field"><label>Cool adjust</label><input data-field="cool-adjust" type="number" min="-8" max="7" value="${escapeHtml(settings.cool_adjust ?? 0)}"></div>
-                <div class="field"><label>Heat adjust</label><input data-field="heat-adjust" type="number" min="-8" max="7" value="${escapeHtml(settings.heat_adjust ?? 0)}"></div>
-                <div class="field"><label>Min set</label><input data-field="min-setpoint" type="number" min="0" max="255" value="${escapeHtml(settings.min_setpoint ?? 16)}"></div>
-                <div class="field"><label>Max set</label><input data-field="max-setpoint" type="number" min="0" max="255" value="${escapeHtml(settings.max_setpoint ?? 30)}"></div>
-                <div class="field"><label>Auto off</label><select data-field="auto-off"><option value="true" ${settings.auto_off ? "selected" : ""}>On</option><option value="false" ${!settings.auto_off ? "selected" : ""}>Off</option></select></div>
-                <div class="field"><label>Time limit</label><input data-field="on-time-limit" type="number" min="0" max="15" value="${escapeHtml(settings.on_time_limit ?? 0)}"></div>
-                ${["auto", "cool", "heat", "dry", "fan"].map((mode) => boolSelect(`mode-${mode}`, `Mode ${mode}`, !!modes[mode])).join("")}
-                ${["auto", "quiet", "low", "medium", "high", "powerful", "turbo"].map((fan) => numberField(`fan-${fan}`, `Fan ${fan}`, fans[fan] ?? 0, 0, 15)).join("")}
-                ${["auto", "touchpad_1", "touchpad_2", "average", "economy"].map((selector) => boolSelect(`selector-${selector}`, `Show ${selector}`, !!selectors[selector])).join("")}
-                ${numberField("selector-groups-1", "Selector zones 1-8", selectors.groups_1_8_bitmap ?? 0, 0, 255)}
-                ${numberField("selector-groups-2", "Selector zones 9-16", selectors.groups_9_16_bitmap ?? 0, 0, 255)}
-                ${numberField("turbo-group", "Turbo zone", turboRecord.group ?? 255, 0, 255)}
+                <div class="field"><label>Cool Adjust</label><input data-field="cool-adjust" type="number" min="-8" max="7" value="${escapeHtml(settings.cool_adjust ?? 0)}"></div>
+                <div class="field"><label>Heat Adjust</label><input data-field="heat-adjust" type="number" min="-8" max="7" value="${escapeHtml(settings.heat_adjust ?? 0)}"></div>
+                <div class="field"><label>Min Set</label><input data-field="min-setpoint" type="number" min="0" max="255" value="${escapeHtml(settings.min_setpoint ?? 16)}"></div>
+                <div class="field"><label>Max Set</label><input data-field="max-setpoint" type="number" min="0" max="255" value="${escapeHtml(settings.max_setpoint ?? 30)}"></div>
+                <div class="field"><label>Auto Off</label><select data-field="auto-off"><option value="true" ${settings.auto_off ? "selected" : ""}>On</option><option value="false" ${!settings.auto_off ? "selected" : ""}>Off</option></select></div>
+                <div class="field"><label>Time Limit</label><input data-field="on-time-limit" type="number" min="0" max="15" value="${escapeHtml(settings.on_time_limit ?? 0)}"></div>
+                ${["auto", "cool", "heat", "dry", "fan"].map((mode) => boolSelect(`mode-${mode}`, `Mode ${titleText(mode)}`, !!modes[mode])).join("")}
+                ${["auto", "quiet", "low", "medium", "high", "powerful", "turbo"].map((fan) => numberField(`fan-${fan}`, `Fan ${titleText(fan)}`, fans[fan] ?? 0, 0, 15)).join("")}
+                ${["auto", "touchpad_1", "touchpad_2", "average", "economy"].map((selector) => boolSelect(`selector-${selector}`, `Show ${titleText(selector)}`, !!selectors[selector])).join("")}
+                ${numberField("selector-groups-1", "Selector Zones 1-8", selectors.groups_1_8_bitmap ?? 0, 0, 255)}
+                ${numberField("selector-groups-2", "Selector Zones 9-16", selectors.groups_9_16_bitmap ?? 0, 0, 255)}
+                ${numberField("turbo-group", "Turbo Zone", turboRecord.group ?? 255, 0, 255)}
               </div>
               <div class="service-actions">
                 <button type="button" data-service-action="ac-base-info" data-ac="${escapeHtml(id)}">Save AC Base</button>
@@ -2153,7 +2149,7 @@ INDEX_HTML = """<!doctype html>
               </div>
             </div>
           </article>`;
-      }).join("") || '<div class="muted">No AC setup data</div>';
+      }).join("") || '<div class="muted">No AC Setup Data</div>';
       if (document.activeElement !== $("system-name-input")) $("system-name-input").value = system.system_name || "";
       const service = state.service || {};
       if (document.activeElement !== $("service-company-input")) $("service-company-input").value = service.company || service.company_name || "";
@@ -2162,13 +2158,13 @@ INDEX_HTML = """<!doctype html>
         <article class="card">
           <div class="card-title">Preference</div>
           <div class="field-grid">
-            ${boolSelect("show-ac-errors", "Show AC errors", !!system.show_ac_errors)}
-            ${boolSelect("pref-show-outside-temp", "Show outside temp", !!system.show_outside_temp)}
-            ${boolSelect("pref-show-control-sensor", "Show control sensor", !!system.show_control_sensor)}
+            ${boolSelect("show-ac-errors", "Show AC Errors", !!system.show_ac_errors)}
+            ${boolSelect("pref-show-outside-temp", "Show Outside Temp", !!system.show_outside_temp)}
+            ${boolSelect("pref-show-control-sensor", "Show Control Sensor", !!system.show_control_sensor)}
             ${boolSelect("use-fahrenheit", "Fahrenheit", !!system.use_fahrenheit)}
             ${numberField("location", "Location", system.location ?? system.address_or_location ?? 0, 0, 127)}
             ${boolSelect("screensaver-enabled", "Screensaver", !!system.screensaver_enabled)}
-            ${numberField("screensaver-timeout", "Screen timeout", system.screensaver_timeout ?? 0, 0, 127)}
+            ${numberField("screensaver-timeout", "Screen Timeout", system.screensaver_timeout ?? 0, 0, 127)}
           </div>
           <div class="service-actions"><button type="button" data-service-action="preference">Save Preference</button></div>
         </article>
@@ -2177,12 +2173,12 @@ INDEX_HTML = """<!doctype html>
           <div class="field-grid">
             ${numberField("group-count", "Groups", system.group_count ?? (Object.keys(groups).length || 1), 1, 16)}
             ${numberField("damper-rpm", "Damper RPM", system.damper_rpm ?? 100, 0, 255)}
-            ${numberField("touchpad-1-location", "Touchpad 1 location", system.touchpad_1_location ?? 255, 0, 255)}
-            ${numberField("touchpad-2-location", "Touchpad 2 location", system.touchpad_2_location ?? 255, 0, 255)}
-            ${boolSelect("ac-button-blocked", "Block AC button", !!system.ac_button_blocked)}
-            ${boolSelect("param-show-outside-temp", "Outside temp", !!system.show_outside_temp)}
-            ${boolSelect("lock-to-temp-control", "Lock temp control", !!system.lock_to_temp_control)}
-            ${boolSelect("param-show-control-sensor", "Control sensor", !!system.show_control_sensor)}
+            ${numberField("touchpad-1-location", "Touchpad 1 Location", system.touchpad_1_location ?? 255, 0, 255)}
+            ${numberField("touchpad-2-location", "Touchpad 2 Location", system.touchpad_2_location ?? 255, 0, 255)}
+            ${boolSelect("ac-button-blocked", "Block AC Button", !!system.ac_button_blocked)}
+            ${boolSelect("param-show-outside-temp", "Outside Temp", !!system.show_outside_temp)}
+            ${boolSelect("lock-to-temp-control", "Lock Temp Control", !!system.lock_to_temp_control)}
+            ${boolSelect("param-show-control-sensor", "Control Sensor", !!system.show_control_sensor)}
           </div>
           <div class="service-actions"><button type="button" data-service-action="parameters">Save Parameters</button></div>
         </article>
@@ -2193,13 +2189,13 @@ INDEX_HTML = """<!doctype html>
         <article class="card">
           <div class="card-title">Service Reminder</div>
           <div class="field-grid">
-            ${boolSelect("show-service-due", "Show service due", !!service.show_service_due)}
-            ${boolSelect("service-due-locked", "Lock service due", !!service.service_due_locked)}
-            ${boolSelect("filter-clean-due", "Filter clean due", !!service.filter_clean_due)}
-            ${boolSelect("maintenance-due", "Maintenance due", !!service.maintenance_due)}
+            ${boolSelect("show-service-due", "Show Service Due", !!service.show_service_due)}
+            ${boolSelect("service-due-locked", "Lock Service Due", !!service.service_due_locked)}
+            ${boolSelect("filter-clean-due", "Filter Clean Due", !!service.filter_clean_due)}
+            ${boolSelect("maintenance-due", "Maintenance Due", !!service.maintenance_due)}
             ${numberField("service-months", "Months", service.months ?? 0, 0, 255)}
             ${numberField("service-days", "Days", service.days ?? 0, 0, 65535)}
-            ${numberField("service-runtime-hours", "Runtime hours", service.runtime_hours ?? 0, 0, 4294967295)}
+            ${numberField("service-runtime-hours", "Runtime Hours", service.runtime_hours ?? 0, 0, 4294967295)}
           </div>
           <div class="service-actions"><button type="button" data-service-action="service-contact">Save Service</button></div>
         </article>
@@ -2220,7 +2216,7 @@ INDEX_HTML = """<!doctype html>
       const config = controller.config || {};
       configuredTheme = config.ui_theme || "system";
       applyTheme();
-      $("app-title").textContent = detectAirTouchModel(state);
+      $("app-title").textContent = "OpenAirtouch";
       renderAlerts(collectAlerts(controller, state, integrations, transactions));
       renderWeather(integrations);
       renderIndoor(integrations, state);
@@ -2234,13 +2230,14 @@ INDEX_HTML = """<!doctype html>
       }).length;
 
       $("metrics").innerHTML = [
-        metric("Service", text(controller.status, "-")),
-        metric("Transport", config.transport),
+        metric("Protocol", detectAirTouchModel(state)),
+        metric("Service", titleText(controller.status, "-")),
+        metric("Transport", titleText(config.transport)),
         metric("Endpoint", config.transport === "tcp_serial" ? `${config.tcp_host}:${config.tcp_port}` : config.port),
         metric("Address", runtime.src),
-        metric("Boot", runtime.boot_complete ? "complete" : "pending"),
+        metric("Boot", runtime.boot_complete ? "Complete" : "Pending"),
         metric("RX / TX", `${runtime.rx_count || 0} / ${runtime.tx_count || 0}`),
-        metric("Transactions", `${(transactions.completed || []).length} ok, ${(transactions.failed || []).length} fail`)
+        metric("Transactions", `${(transactions.completed || []).length} OK, ${(transactions.failed || []).length} Fail`)
       ].join("");
 
       $("ac-selector").innerHTML = acEntries.length > 1
@@ -2251,7 +2248,7 @@ INDEX_HTML = """<!doctype html>
       $("ac-count").textContent = String(acEntries.length);
       $("acs").innerHTML = acEntries.length
         ? acCard(String(selectedAc), selectedAcRecord, allZoneEntries)
-        : '<div class="muted">No AC data</div>';
+        : '<div class="muted">No AC Data</div>';
 
       const groups = state.active_groups || state.groups || {};
       const zoneEntries = allZoneEntries;
@@ -2260,13 +2257,13 @@ INDEX_HTML = """<!doctype html>
       const pageStart = zonePage * 8;
       const pageEntries = zoneEntries.slice(pageStart, pageStart + 8);
       $("zone-count").textContent = String(zoneEntries.length);
-      $("zone-active-count").textContent = `${activeZoneCount} active`;
+      $("zone-active-count").textContent = `${activeZoneCount} Active`;
       $("zone-pages").innerHTML = pageCount > 1
         ? Array.from({length: pageCount}, (_value, index) => `<button type="button" class="option ${index === zonePage ? "active" : ""}" data-action="zone-page" data-page="${index}">${(index * 8) + 1}-${Math.min((index + 1) * 8, zoneEntries.length)}</button>`).join("")
         : "";
       $("groups").innerHTML = pageEntries
         .map(([id, group]) => groupTile(id, group))
-        .join("") || '<div class="muted">No zone data</div>';
+        .join("") || '<div class="muted">No Zone Data</div>';
 
       renderFavourites(state.favourites || {}, groups);
       renderPrograms(state.programs || {}, groups);
@@ -2283,19 +2280,19 @@ INDEX_HTML = """<!doctype html>
           sensor.signal !== undefined && sensor.signal !== null ? sensor.signal : "-",
           [
             sensor.kind,
-            sensor.status || (sensor.present === false ? "missing" : sensor.listed ? "listed" : "-"),
-            sensor.battery !== undefined && sensor.battery !== null ? `battery ${sensor.battery}` : "",
+            titleText(sensor.status || (sensor.present === false ? "missing" : sensor.listed ? "listed" : "-")),
+            sensor.battery !== undefined && sensor.battery !== null ? `Battery ${sensor.battery}` : "",
           ].filter(Boolean).join(" / ")
-        ])).join("") || row(["-", "No sensor data", "-", "-", "-"]);
+        ])).join("") || row(["-", "No Sensor Data", "-", "-", "-"]);
     }
 
     function renderEvents(payload) {
       const events = (payload.events || []).slice(-10).reverse();
       $("events").innerHTML = events.map((event) => row([
-        event.event,
+        titleText(event.event),
         event.cmd_name || event.cmd,
         event.message || (event.transaction && event.transaction.name) || ""
-      ])).join("") || row(["-", "-", "No events yet"]);
+      ])).join("") || row(["-", "-", "No Events Yet"]);
     }
 
     async function sendCommand(action, data) {

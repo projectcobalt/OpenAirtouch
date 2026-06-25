@@ -113,9 +113,9 @@ def decode_led_response(payload: bytes) -> dict[str, Any]:
         "type": "led_response",
         "led_code": payload[0],
         "led_name": {
-            0x00: "blue_off",
-            0x01: "blue_on",
-            0x16: "alternating_blue_red_0_5hz",
-        }.get(payload[0], "unknown"),
+            0x00: "app_running_ac_off",
+            0x01: "ac_on",
+            0x16: "error_blue_red_flash",
+        }.get(payload[0], "unmapped"),
         "tail": hex_bytes(payload[1:]),
     }
