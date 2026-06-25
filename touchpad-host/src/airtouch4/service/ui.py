@@ -12,61 +12,61 @@ INDEX_HTML = """<!doctype html>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f3f6f8;
+      --bg: #f5f5f3;
       --panel: #ffffff;
-      --panel-soft: #f8fafb;
-      --panel-deep: #eef4f6;
-      --ink: #16212c;
-      --muted: #657381;
-      --line: #d9e2e8;
+      --panel-soft: #f7f7f5;
+      --panel-deep: #eeeeeb;
+      --ink: #20201e;
+      --muted: #6f706b;
+      --line: #deded8;
       --ok: #14795a;
       --bad: #b42318;
       --warn: #996700;
-      --accent: #0f6e8e;
-      --accent-soft: #e6f4f7;
+      --accent: #3f7668;
+      --accent-soft: #e8f2ef;
       --cool: #2d6cdf;
       --warm: #b45f06;
       --led-blue: #1e88ff;
       --led-purple: #8b5cf6;
       --led-red: #e02b20;
       --led-amber: #d18b00;
-      --header: #16212c;
+      --header: #20201e;
       --header-ink: #ffffff;
-      --active-bg: #0f6e8e;
+      --active-bg: #3f7668;
       --active-ink: #ffffff;
-      --shadow: 0 18px 36px rgba(22, 33, 44, .12);
-      --shadow-soft: 0 8px 20px rgba(22, 33, 44, .08);
+      --shadow: 0 18px 36px rgba(32, 32, 30, .12);
+      --shadow-soft: 0 8px 20px rgba(32, 32, 30, .08);
       --glass: rgba(255, 255, 255, .76);
-      --lcd: #f7fbfb;
+      --lcd: #fafaf8;
     }
     body[data-theme="dark"] {
       color-scheme: dark;
-      --bg: #10161c;
-      --panel: #17212a;
-      --panel-soft: #1d2933;
-      --panel-deep: #111a22;
-      --ink: #e7eef4;
-      --muted: #9babba;
-      --line: #33414d;
+      --bg: #111110;
+      --panel: #1b1b19;
+      --panel-soft: #242421;
+      --panel-deep: #151514;
+      --ink: #eeeeea;
+      --muted: #aaa9a2;
+      --line: #3a3a35;
       --ok: #42b883;
       --bad: #ff6b5f;
       --warn: #d8a63c;
-      --accent: #57b6d4;
-      --accent-soft: #173a46;
+      --accent: #77b8a6;
+      --accent-soft: #20352f;
       --cool: #73a7ff;
       --warm: #f0a650;
       --led-blue: #49a8ff;
       --led-purple: #a78bfa;
       --led-red: #ff5a4f;
       --led-amber: #f0b23e;
-      --header: #0b1117;
-      --header-ink: #f3f8fb;
-      --active-bg: #57b6d4;
-      --active-ink: #071217;
+      --header: #0f0f0e;
+      --header-ink: #f6f6f2;
+      --active-bg: #77b8a6;
+      --active-ink: #07110f;
       --shadow: 0 10px 28px rgba(0, 0, 0, .22);
       --shadow-soft: 0 4px 14px rgba(0, 0, 0, .18);
-      --glass: rgba(23, 33, 42, .78);
-      --lcd: #121b22;
+      --glass: rgba(27, 27, 25, .78);
+      --lcd: #171716;
     }
     * { box-sizing: border-box; }
     body {
@@ -1153,6 +1153,7 @@ INDEX_HTML = """<!doctype html>
     let selectedTheme = localStorage.getItem(THEME_KEY) || "system";
     let latestState = {};
     let latestHealth = {ok: false, status: "Connecting"};
+    let editingUntil = 0;
 
     function apiPath(path) {
       return `${API_ROOT}/api/${path}`;
@@ -1288,6 +1289,15 @@ INDEX_HTML = """<!doctype html>
 
     function textField(field, label, value, maxlength = 16) {
       return `<div class="field"><label>${escapeHtml(label)}</label><input data-field="${escapeHtml(field)}" maxlength="${escapeHtml(maxlength)}" value="${escapeHtml(value || "")}" autocomplete="off"></div>`;
+    }
+
+    function markEditing() {
+      editingUntil = Date.now() + 2500;
+    }
+
+    function isEditingForm() {
+      const active = document.activeElement;
+      return (active && active.matches && active.matches("input, select, textarea")) || Date.now() < editingUntil;
     }
 
     function themeToApply() {
@@ -1438,7 +1448,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     function averageZoneTemperature(state, {activeOnly = false} = {}) {
-      const entries = Object.entries((state && (state.active_groups || state.groups)) || {});
+      const entries = configuredGroupEntries(state || {});
       const values = entries
         .map(([_id, group]) => group.status || {})
         .filter((status) => {
@@ -1552,12 +1562,28 @@ INDEX_HTML = """<!doctype html>
     function groupNamesFromBitmap(groups, low, high) {
       const names = [];
       for (let i = 0; i < 8; i += 1) {
-        if (low & (1 << i)) names.push((groups[i] && groups[i].name) || `Zone ${i + 1}`);
+        const group = groups[i];
+        if ((low & (1 << i)) && group) names.push(group.name || `Zone ${i + 1}`);
       }
       for (let i = 0; i < 8; i += 1) {
-        if (high & (1 << i)) names.push((groups[i + 8] && groups[i + 8].name) || `Zone ${i + 9}`);
+        const group = groups[i + 8];
+        if ((high & (1 << i)) && group) names.push(group.name || `Zone ${i + 9}`);
       }
       return names;
+    }
+
+    function configuredGroupEntries(state) {
+      const source = (state && (state.active_groups || state.groups)) || {};
+      let entries = Object.entries(source).sort(([a], [b]) => Number(a) - Number(b));
+      const count = Number(state && state.system && state.system.group_count);
+      if (Number.isInteger(count) && count > 0) {
+        entries = entries.filter(([id]) => Number(id) < count);
+      }
+      return entries;
+    }
+
+    function configuredGroups(state) {
+      return Object.fromEntries(configuredGroupEntries(state));
     }
 
     function sensorName(value) {
@@ -1590,8 +1616,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     function zoneEntriesForAc(state, acId) {
-      const allGroups = state.active_groups || state.groups || {};
-      const entries = Object.entries(allGroups).sort(([a], [b]) => Number(a) - Number(b));
+      const entries = configuredGroupEntries(state);
       const oneDuct = !!(state.system && state.system.one_duct_system);
       const ac = (state.acs || {})[acId] || {};
       const base = ac.base || {};
@@ -1971,14 +1996,16 @@ INDEX_HTML = """<!doctype html>
 
     function renderFavourites(favourites, groups) {
       const entries = Object.entries(favourites || {}).sort(([a], [b]) => Number(a) - Number(b));
+      const groupEntries = Object.entries(groups || {}).sort(([a], [b]) => Number(a) - Number(b));
       $("favourites").innerHTML = entries.map(([id, favourite]) => {
         const groupNames = groupNamesFromBitmap(groups, favourite.groups_1_8_bitmap || 0, favourite.groups_9_16_bitmap || 0);
         const pending = pendingFavourites.has(String(id));
-        const groupChecks = Array.from({length: 16}, (_value, index) => {
+        const groupChecks = groupEntries.map(([groupId, group]) => {
+          const index = Number(groupId);
           const selected = index < 8
             ? !!((favourite.groups_1_8_bitmap || 0) & (1 << index))
             : !!((favourite.groups_9_16_bitmap || 0) & (1 << (index - 8)));
-          const name = (groups[index] || {}).name || `Zone ${index + 1}`;
+          const name = group.name || `Zone ${index + 1}`;
           return `<label class="check-row"><input type="checkbox" data-favourite-group="${index}" ${selected ? "checked" : ""}><span>${escapeHtml(name)}</span></label>`;
         }).join("");
         return `
@@ -1993,6 +2020,7 @@ INDEX_HTML = """<!doctype html>
               <div class="service-actions">
                 <button type="button" data-action="active-favourite" data-favourite="${escapeHtml(id)}" ${pending ? "disabled" : ""}>${escapeHtml(pending ? "Sending" : "Apply")}</button>
                 <button type="button" class="secondary" data-action="favourite-save" data-favourite="${escapeHtml(id)}">Save Favourite</button>
+                <button type="button" class="secondary" data-action="favourite-clear" data-favourite="${escapeHtml(id)}">Clear Favourite</button>
               </div>
             </div>
           </article>`;
@@ -2096,6 +2124,21 @@ INDEX_HTML = """<!doctype html>
         .map((input) => Number(input.dataset.favouriteGroup));
     }
 
+    function clearedProgramRecord(program) {
+      return {
+        program,
+        enabled: false,
+        days_bitmap: 0,
+        name: "",
+        groups_1_8_bitmap: 0,
+        groups_9_16_bitmap: 0,
+        active_ac_bitmap: 0,
+        on_timer: {enabled: false, hour: 0, minute: 0},
+        on_setpoint: 26,
+        off_timer: {enabled: false, hour: 0, minute: 0}
+      };
+    }
+
     function renderPrograms(programs, groups) {
       const entries = Object.entries(programs || {}).sort(([a], [b]) => Number(a) - Number(b));
       $("programs").innerHTML = entries.map(([_id, program]) => {
@@ -2120,7 +2163,10 @@ INDEX_HTML = """<!doctype html>
                 <div class="field"><label>Setpoint</label><input data-field="program-on-setpoint" type="number" min="0" max="63" value="${escapeHtml(program.on_setpoint ?? 26)}"></div>
                 ${timerFields("Off", offTimer)}
               </div>
-              <div class="service-actions"><button type="button" data-program-action="program-save" data-program="${escapeHtml(program.program ?? _id)}">Save Program</button></div>
+              <div class="service-actions">
+                <button type="button" data-program-action="program-save" data-program="${escapeHtml(program.program ?? _id)}">Save Program</button>
+                <button type="button" class="secondary" data-program-action="program-clear" data-program="${escapeHtml(program.program ?? _id)}">Clear Program</button>
+              </div>
             </div>
           </article>`;
       }).join("") || '<div class="muted">No Program Data</div>';
@@ -2159,12 +2205,13 @@ INDEX_HTML = """<!doctype html>
     }
 
     function renderServicePages(state) {
-      const groups = state.groups || state.active_groups || {};
+      const groups = configuredGroups(state);
+      const groupEntries = configuredGroupEntries(state);
       const acs = visibleAcs(state);
       const system = state.system || {};
-      const balanceZones = ((state.system || {}).balance || {}).zones || [];
-      $("grouping").innerHTML = Object.entries(groups)
-        .sort(([a], [b]) => Number(a) - Number(b))
+      const balanceZones = (((state.system || {}).balance || {}).zones || [])
+        .filter((zone) => groups[zone.zone]);
+      $("grouping").innerHTML = groupEntries
         .map(([id, group]) => {
           const grouping = group.grouping || {};
           const status = group.status || {};
@@ -2298,7 +2345,7 @@ INDEX_HTML = """<!doctype html>
         <article class="card">
           <div class="card-title">Parameters</div>
           <div class="field-grid">
-            ${numberField("group-count", "Groups", system.group_count ?? (Object.keys(groups).length || 1), 1, 16)}
+            ${numberField("group-count", "Groups", system.group_count ?? (groupEntries.length || 1), 1, 16)}
             ${numberField("damper-rpm", "Damper RPM", system.damper_rpm ?? 100, 0, 255)}
             ${numberField("touchpad-1-location", "Touchpad 1 Location", system.touchpad_1_location ?? 255, 0, 255)}
             ${numberField("touchpad-2-location", "Touchpad 2 Location", system.touchpad_2_location ?? 255, 0, 255)}
@@ -2378,7 +2425,7 @@ INDEX_HTML = """<!doctype html>
         ? acCard(String(selectedAc), selectedAcRecord, allZoneEntries)
         : '<div class="muted">No AC Data</div>';
 
-      const groups = state.active_groups || state.groups || {};
+      const groups = configuredGroups(state);
       const zoneEntries = allZoneEntries;
       const pageCount = Math.max(1, Math.ceil(zoneEntries.length / 8));
       if (zonePage >= pageCount) zonePage = pageCount - 1;
@@ -2499,6 +2546,7 @@ INDEX_HTML = """<!doctype html>
         setTimeout(() => {
           button.disabled = false;
           button.textContent = previous;
+          refresh(true);
         }, 900);
       }
     });
@@ -2506,6 +2554,16 @@ INDEX_HTML = """<!doctype html>
     if (window.matchMedia) {
       window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
     }
+
+    document.addEventListener("focusin", (event) => {
+      if (event.target && event.target.matches && event.target.matches("input, select, textarea")) markEditing();
+    });
+    document.addEventListener("input", (event) => {
+      if (event.target && event.target.matches && event.target.matches("input, select, textarea")) markEditing();
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target && event.target.matches && event.target.matches("input, select, textarea")) markEditing();
+    });
 
     $("view-settings").addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-service-action]");
@@ -2661,7 +2719,7 @@ INDEX_HTML = """<!doctype html>
         setTimeout(() => {
           button.disabled = false;
           button.textContent = previous;
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
@@ -2708,7 +2766,7 @@ INDEX_HTML = """<!doctype html>
       } finally {
         setTimeout(() => {
           pendingGroups.delete(group);
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
@@ -2739,7 +2797,7 @@ INDEX_HTML = """<!doctype html>
       } finally {
         setTimeout(() => {
           pendingGroups.delete(group);
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
@@ -2762,7 +2820,7 @@ INDEX_HTML = """<!doctype html>
       } finally {
         setTimeout(() => {
           pendingAcs.delete(ac);
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
@@ -2798,6 +2856,12 @@ INDEX_HTML = """<!doctype html>
             name: card.querySelector('[data-field="favourite-name"]').value,
             groups: favouriteGroupsFromCard(card)
           });
+        } else if (action === "favourite-clear") {
+          await sendCommand("favourite", {
+            favourite: Number(favourite),
+            name: "",
+            groups: []
+          });
         }
         setTimeout(refresh, 300);
       } catch (err) {
@@ -2805,7 +2869,7 @@ INDEX_HTML = """<!doctype html>
       } finally {
         setTimeout(() => {
           pendingFavourites.delete(favourite);
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
@@ -2837,6 +2901,20 @@ INDEX_HTML = """<!doctype html>
             linked_ac: !!((latestState.system || {}).programs_linked_ac),
             records
           });
+        } else if (button.dataset.programAction === "program-clear") {
+          const program = Number(button.dataset.program);
+          const records = programRecordsFromState();
+          const index = records.findIndex((item) => item.program === program);
+          if (index >= 0) {
+            records[index] = clearedProgramRecord(program);
+          } else {
+            records.push(clearedProgramRecord(program));
+          }
+          await sendCommand("program_define_new", {
+            program_count: Number((latestState.system || {}).program_count ?? records.length),
+            linked_ac: !!((latestState.system || {}).programs_linked_ac),
+            records
+          });
         } else if (button.dataset.programAction === "ac-timer-save") {
           const ac = Number(button.dataset.ac);
           const card = button.closest("[data-ac-timer]");
@@ -2854,12 +2932,12 @@ INDEX_HTML = """<!doctype html>
         setTimeout(() => {
           button.disabled = false;
           button.textContent = previous;
-          refresh();
+          refresh(true);
         }, 900);
       }
     });
 
-    async function refresh() {
+    async function refresh(force = false) {
       try {
         const [health, state, events] = await Promise.all([
           fetch(apiPath("health")).then((r) => r.json()),
@@ -2867,6 +2945,10 @@ INDEX_HTML = """<!doctype html>
           fetch(apiPath("events")).then((r) => r.json())
         ]);
         setStatus(health);
+        if (!force && isEditingForm()) {
+          renderEvents(events);
+          return;
+        }
         renderState(state, events);
         renderEvents(events);
       } catch (err) {
@@ -2877,7 +2959,7 @@ INDEX_HTML = """<!doctype html>
     applyTheme();
     window.addEventListener("resize", () => requestAnimationFrame(updateAlertTicker));
     refresh();
-    setInterval(refresh, 1500);
+    setInterval(() => refresh(), 1500);
   </script>
 </body>
 </html>
