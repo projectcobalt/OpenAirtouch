@@ -61,6 +61,8 @@ class RuntimeController:
         self.config = config
         self._transport_factory = transport_factory or self._default_transport_factory
         self._lock = threading.RLock()
+        self._change = threading.Condition(self._lock)
+        self._change_version = 0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._runtime: AirTouchRuntime | None = None
@@ -180,6 +182,16 @@ class RuntimeController:
         with self._lock:
             return list(self._events)
 
+    def change_version(self) -> int:
+        with self._lock:
+            return self._change_version
+
+    def wait_for_change(self, version: int, timeout: float = 30.0) -> int:
+        with self._change:
+            if self._change_version <= version:
+                self._change.wait(timeout)
+            return self._change_version
+
     def public_config(self) -> dict[str, Any]:
         return {
             "transport": self.config.transport,
@@ -218,18 +230,21 @@ class RuntimeController:
         with self._lock:
             config = self._adaptive.update_config(values)
             _save_adaptive_config(self._adaptive_config_path, config)
+            self._mark_changed_locked()
             return config
 
     def manage_adaptive_learning(self, values: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             learning = self._adaptive.manage_learning(values)
             _save_adaptive_learning(self._adaptive_learning_path, self._adaptive.export_learning())
+            self._mark_changed_locked()
             return learning
 
     def _run(self) -> None:
         while not self._stop.is_set():
             with self._lock:
                 self._status = "starting" if self._runtime is None else "reconnecting"
+                self._mark_changed_locked()
             try:
                 with self._transport_factory() as transport, JsonlBusLogger(self.config.bus_log) as logger:
                     runtime = AirTouchRuntime(transport, self.config.runtime)
@@ -237,6 +252,7 @@ class RuntimeController:
                         self._runtime = runtime
                         self._status = "running"
                         self._error = None
+                        self._mark_changed_locked()
                     for event in runtime.start():
                         self._record_event(event, logger)
                     while not self._stop.is_set():
@@ -252,6 +268,7 @@ class RuntimeController:
                 self._sleep_before_reconnect()
         with self._lock:
             self._status = "stopped"
+            self._mark_changed_locked()
         self._mqtt.stop()
         self._error_resolver.stop()
 
@@ -269,6 +286,7 @@ class RuntimeController:
         record = _event_record(event)
         with self._lock:
             self._events.append(record)
+            self._mark_changed_locked()
         if event.event == "rx" and event.packet is not None:
             bus_logger.log_rx(event.packet)
             LOG.info(_frame_log_line("rx", event))
@@ -291,6 +309,7 @@ class RuntimeController:
                 "message": message,
                 "state_changed": False,
             })
+            self._mark_changed_locked()
 
     def _poll_weather(self) -> None:
         weather_entity = self.config.weather.weather_entity.strip()
@@ -317,65 +336,80 @@ class RuntimeController:
                 with self._lock:
                     self._weather = weather
                     self._weather_error = weather_error
+                    self._mark_changed_locked()
             except Exception as exc:  # pragma: no cover - live HA API path
                 with self._lock:
                     self._weather_error = f"{type(exc).__name__}: {exc}"
+                    self._mark_changed_locked()
         else:
             with self._lock:
                 self._weather = None
                 self._weather_error = None
+                self._mark_changed_locked()
         if forecast_entity:
             try:
                 forecast = self._ha_client.hourly_forecast_snapshot(current_weather=self._weather)
                 with self._lock:
                     self._forecast = forecast
                     self._forecast_error = None
+                    self._mark_changed_locked()
             except Exception as exc:  # pragma: no cover - live HA API path
                 with self._lock:
                     self._forecast_error = f"{type(exc).__name__}: {exc}"
+                    self._mark_changed_locked()
         else:
             with self._lock:
                 self._forecast = None
                 self._forecast_error = None
+                self._mark_changed_locked()
         if indoor_configured:
             try:
                 indoor = self._ha_client.indoor_snapshot()
                 with self._lock:
                     self._indoor = indoor
                     self._indoor_error = None
+                    self._mark_changed_locked()
             except Exception as exc:  # pragma: no cover - live HA API path
                 with self._lock:
                     self._indoor_error = f"{type(exc).__name__}: {exc}"
+                    self._mark_changed_locked()
         else:
             with self._lock:
                 self._indoor = None
                 self._indoor_error = None
+                self._mark_changed_locked()
         if solar_configured:
             try:
                 solar = self._ha_client.solar_snapshot()
                 with self._lock:
                     self._solar = solar
                     self._solar_error = None
+                    self._mark_changed_locked()
             except Exception as exc:  # pragma: no cover - live HA API path
                 with self._lock:
                     self._solar_error = f"{type(exc).__name__}: {exc}"
+                    self._mark_changed_locked()
         else:
             with self._lock:
                 self._solar = None
                 self._solar_error = None
+                self._mark_changed_locked()
         if sun_needed:
             try:
                 sun = self._ha_client.sun_snapshot()
                 with self._lock:
                     self._sun = sun
                     self._sun_error = None
+                    self._mark_changed_locked()
             except Exception as exc:  # pragma: no cover - live HA API path
                 with self._lock:
                     self._sun_error = f"{type(exc).__name__}: {exc}"
+                    self._mark_changed_locked()
         else:
             with self._lock:
                 self._sun = None
                 self._sun_error = None
+                self._mark_changed_locked()
 
     def _publish_mqtt(self) -> None:
         if not self.config.mqtt.enabled:
@@ -407,6 +441,7 @@ class RuntimeController:
                         "command": f"0x{spec.command:02X}",
                         "state_changed": False,
                     })
+                self._mark_changed_locked()
 
     def _save_adaptive_learning_periodically(self) -> None:
         if self._adaptive_learning_path is None:
@@ -428,6 +463,10 @@ class RuntimeController:
         if self.config.transport == "tcp_serial":
             return TcpSerialTransport(TcpSerialConfig(host=self.config.tcp_host, port=self.config.tcp_port))
         raise ValueError(f"unsupported transport: {self.config.transport}")
+
+    def _mark_changed_locked(self) -> None:
+        self._change_version += 1
+        self._change.notify_all()
 
 
 def _event_record(event: RuntimeEvent) -> dict[str, Any]:

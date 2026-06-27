@@ -131,6 +131,7 @@ class RuntimeControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = f"{tmp}/adaptive_config.json"
             first = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_config_path=Path(path)))
+            version = first.change_version()
 
             updated = first.update_adaptive_config({
                 "mode": "adaptive",
@@ -149,6 +150,7 @@ class RuntimeControllerTests(unittest.TestCase):
             )
 
             persisted = json.loads(Path(path).read_text(encoding="utf-8"))
+            self.assertGreater(first.wait_for_change(version, timeout=0.01), version)
             self.assertEqual(updated["learning_mode"], "control")
             self.assertEqual(persisted["mpc_horizon_hours"], 8)
             self.assertEqual(persisted["compressor_groups"], [[0, 1], [2, 3]])
@@ -174,12 +176,14 @@ class RuntimeControllerTests(unittest.TestCase):
             path = Path(tmp) / "adaptive_learning.json"
             controller = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_learning_path=path))
             controller._adaptive._mpc.zone_models[2] = ZoneThermalModel(passive_samples=4)
+            version = controller.change_version()
 
             accelerated = controller.manage_adaptive_learning({"action": "accelerate_zone", "zone": 2, "enabled": True})
             normal = controller.manage_adaptive_learning({"action": "accelerate_zone", "zone": 2, "enabled": False})
             controller.manage_adaptive_learning({"action": "reset_zone", "zone": 2})
 
             payload = json.loads(path.read_text(encoding="utf-8"))
+            self.assertGreater(controller.wait_for_change(version, timeout=0.01), version)
             self.assertTrue(accelerated["zones"]["2"]["accelerated_learning"])
             self.assertFalse(normal["zones"]["2"]["accelerated_learning"])
             self.assertNotIn("2", payload["zones"])
@@ -232,6 +236,14 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(health["status"], "reconnecting")
         self.assertIn("TimeoutError", health["error"])
         self.assertTrue(controller.recent_events())
+
+    def test_controller_error_notifies_waiters(self) -> None:
+        controller = RuntimeController(RuntimeControllerConfig(port="TEST"))
+        version = controller.change_version()
+
+        controller._record_controller_error(TimeoutError("bridge unavailable"))
+
+        self.assertGreater(controller.wait_for_change(version, timeout=0.01), version)
 
     def test_tx_event_record_uses_wire_crc(self) -> None:
         packet = AirTouchPacket(

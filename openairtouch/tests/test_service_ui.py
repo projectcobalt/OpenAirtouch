@@ -26,6 +26,20 @@ class ServiceUiTests(unittest.TestCase):
         self.assertIn("planRunText", INDEX_HTML)
         self.assertIn("Run 0h", INDEX_HTML)
 
+    def test_ui_uses_websocket_live_updates_with_slow_poll_fallback(self) -> None:
+        for fragment in (
+            "function wsPath()",
+            "new WebSocket(wsPath())",
+            "handleLiveMessage(JSON.parse(event.data))",
+            'message.type === "events"',
+            "if (!liveSocketConnected) refresh();",
+            "setInterval(() => refresh(), 30000);",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, INDEX_HTML)
+
+        self.assertNotIn("setInterval(() => refresh(), 1500);", INDEX_HTML)
+
 
 if __name__ == "__main__":
     unittest.main()

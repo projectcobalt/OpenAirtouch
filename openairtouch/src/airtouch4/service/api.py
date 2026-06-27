@@ -9,15 +9,21 @@ from .commands import CommandRequestError, build_transaction
 from .controller import RuntimeController
 from .ui import INDEX_HTML
 
+WEBSOCKET_PING_INTERVAL = 15.0
+WEBSOCKET_COALESCE_DELAY = 0.1
+
+try:
+    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+    from fastapi.responses import HTMLResponse
+except ModuleNotFoundError:  # pragma: no cover - import guard
+    FastAPI = HTTPException = WebSocket = WebSocketDisconnect = HTMLResponse = None  # type: ignore[assignment]
+
 
 def create_app(controller: RuntimeController):
-    try:
-        from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-        from fastapi.responses import HTMLResponse
-    except ModuleNotFoundError as exc:  # pragma: no cover - import guard
-        raise RuntimeError("FastAPI is required for the service API. Install dependencies from requirements.txt") from exc
+    if FastAPI is None:  # pragma: no cover - import guard
+        raise RuntimeError("FastAPI is required for the service API. Install dependencies from requirements.txt")
 
-    app = FastAPI(title="OpenAirTouch", version="0.2.5")
+    app = FastAPI(title="OpenAirTouch", version="0.2.7")
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -75,16 +81,39 @@ def create_app(controller: RuntimeController):
     @app.websocket("/ws")
     async def websocket(websocket: WebSocket) -> None:
         await websocket.accept()
-        cursor = 0
+        recent = controller.recent_events()
+        cursor = len(recent)
+        version = controller.change_version()
+        await websocket.send_json({
+            "type": "hello",
+            "version": version,
+            "health": controller.health(),
+            "state": controller.snapshot(),
+            "events": recent,
+        })
         try:
             while True:
+                next_version = await asyncio.to_thread(controller.wait_for_change, version, WEBSOCKET_PING_INTERVAL)
+                if next_version == version:
+                    await websocket.send_json({"type": "ping", "version": version})
+                    continue
+
+                await asyncio.sleep(WEBSOCKET_COALESCE_DELAY)
+                version = max(next_version, controller.change_version())
                 recent = controller.recent_events()
                 if cursor > len(recent):
                     cursor = 0
-                for event in recent[cursor:]:
-                    await websocket.send_json(event)
+                new_events = recent[cursor:]
                 cursor = len(recent)
-                await asyncio.sleep(0.5)
+                if new_events:
+                    await websocket.send_json({"type": "events", "version": version, "events": new_events})
+                await websocket.send_json({
+                    "type": "state",
+                    "version": version,
+                    "health": controller.health(),
+                    "state": controller.snapshot(),
+                    "events": recent,
+                })
         except WebSocketDisconnect:
             return
 

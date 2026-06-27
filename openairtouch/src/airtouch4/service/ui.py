@@ -1515,12 +1515,21 @@ INDEX_HTML = """<!doctype html>
     let configuredTheme = "system";
     let selectedTheme = localStorage.getItem(THEME_KEY) || "system";
     let latestState = {};
+    let latestEvents = {events: []};
     let latestHealth = {ok: false, status: "Connecting"};
     let editingUntil = 0;
     let balanceCommitTimer = null;
+    let liveSocket = null;
+    let liveSocketConnected = false;
+    let liveSocketReconnectTimer = null;
 
     function apiPath(path) {
       return `${API_ROOT}/api/${path}`;
+    }
+
+    function wsPath() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return `${protocol}//${window.location.host}${API_ROOT}/ws`;
     }
 
     function text(value, fallback = "-") {
@@ -3348,6 +3357,75 @@ INDEX_HTML = """<!doctype html>
       ])).join("") || row(["-", "-", "No Events Yet"]);
     }
 
+    function applyLiveState(health, state, events, force = false) {
+      latestEvents = events || latestEvents;
+      setStatus(health);
+      if (!force && isEditingForm()) {
+        renderEvents(latestEvents);
+        return;
+      }
+      renderState(state, latestEvents);
+      renderEvents(latestEvents);
+    }
+
+    function handleLiveMessage(message) {
+      if (message.type === "ping") return;
+      if (message.type === "hello" || message.type === "state") {
+        applyLiveState(
+          message.health || latestHealth,
+          message.state || {runtime: {state: latestState}},
+          {events: message.events || latestEvents.events || []},
+          message.type === "hello"
+        );
+        return;
+      }
+      if (message.type === "events" && Array.isArray(message.events)) {
+        latestEvents = {events: [...(latestEvents.events || []), ...message.events].slice(-200)};
+        renderEvents(latestEvents);
+        return;
+      }
+      if (message.type === "event" && message.event) {
+        latestEvents = {events: [...(latestEvents.events || []), message.event].slice(-200)};
+        renderEvents(latestEvents);
+      }
+    }
+
+    function scheduleLiveReconnect() {
+      if (liveSocketReconnectTimer) return;
+      liveSocketReconnectTimer = setTimeout(() => {
+        liveSocketReconnectTimer = null;
+        connectLiveSocket();
+      }, 2000);
+    }
+
+    function connectLiveSocket() {
+      if (liveSocket && (liveSocket.readyState === WebSocket.OPEN || liveSocket.readyState === WebSocket.CONNECTING)) return;
+      try {
+        liveSocket = new WebSocket(wsPath());
+      } catch (err) {
+        setStatus({ok: false, error: err.message});
+        scheduleLiveReconnect();
+        return;
+      }
+      liveSocket.addEventListener("open", () => {
+        liveSocketConnected = true;
+      });
+      liveSocket.addEventListener("message", (event) => {
+        try {
+          handleLiveMessage(JSON.parse(event.data));
+        } catch (err) {
+          setStatus({ok: false, error: err.message});
+        }
+      });
+      liveSocket.addEventListener("close", () => {
+        liveSocketConnected = false;
+        scheduleLiveReconnect();
+      });
+      liveSocket.addEventListener("error", () => {
+        liveSocketConnected = false;
+      });
+    }
+
     async function sendCommand(action, data) {
       const response = await fetch(apiPath("command"), {
         method: "POST",
@@ -3917,13 +3995,7 @@ INDEX_HTML = """<!doctype html>
           fetch(apiPath("state")).then((r) => r.json()),
           fetch(apiPath("events")).then((r) => r.json())
         ]);
-        setStatus(health);
-        if (!force && isEditingForm()) {
-          renderEvents(events);
-          return;
-        }
-        renderState(state, events);
-        renderEvents(events);
+        applyLiveState(health, state, events, force);
       } catch (err) {
         setStatus({ok: false, error: err.message});
       }
@@ -3931,8 +4003,14 @@ INDEX_HTML = """<!doctype html>
 
     applyTheme();
     window.addEventListener("resize", () => requestAnimationFrame(updateAlertTicker));
-    refresh();
-    setInterval(() => refresh(), 1500);
+    connectLiveSocket();
+    setTimeout(() => {
+      if (!liveSocketConnected) refresh(true);
+    }, 1000);
+    setInterval(() => {
+      if (!liveSocketConnected) refresh();
+    }, 15000);
+    setInterval(() => refresh(), 30000);
   </script>
 </body>
 </html>
