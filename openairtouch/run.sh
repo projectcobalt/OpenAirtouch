@@ -45,15 +45,6 @@ INDOOR_HUMIDITY_ENTITY="$(config indoor_humidity_entity "")"
 SOLAR_IRRADIANCE_ENTITY="$(config solar_irradiance_entity "")"
 CLOUD_COVER_ENTITY="$(config cloud_cover_entity "")"
 WEATHER_POLL_INTERVAL="$(config weather_poll_interval 60.0)"
-MQTT_ENABLED="$(config mqtt_enabled false)"
-MQTT_HOST="$(config mqtt_host "")"
-MQTT_PORT="$(config mqtt_port 1883)"
-MQTT_USERNAME="$(config mqtt_username "")"
-MQTT_PASSWORD="$(config mqtt_password "")"
-MQTT_DISCOVERY="$(config mqtt_discovery true)"
-MQTT_DISCOVERY_PREFIX="$(config mqtt_discovery_prefix homeassistant)"
-MQTT_TOPIC_PREFIX="$(config mqtt_topic_prefix openairtouch)"
-MQTT_PUBLISH_INTERVAL="$(config mqtt_publish_interval 10.0)"
 REMOTE_ERROR_RESOLUTION="$(config remote_error_resolution false)"
 REMOTE_ERROR_CACHE_DAYS="$(config remote_error_cache_days 2.0)"
 REMOTE_ERROR_DEVICE_ID="$(config remote_error_device_id "")"
@@ -122,13 +113,6 @@ ARGS=(
     "--weather-poll-interval" "${WEATHER_POLL_INTERVAL}"
     "--adaptive-config-path" "/data/adaptive_config.json"
     "--adaptive-learning-path" "/data/adaptive_learning.json"
-    "--mqtt-host" "${MQTT_HOST}"
-    "--mqtt-port" "${MQTT_PORT}"
-    "--mqtt-username" "${MQTT_USERNAME}"
-    "--mqtt-password" "${MQTT_PASSWORD}"
-    "--mqtt-discovery-prefix" "${MQTT_DISCOVERY_PREFIX}"
-    "--mqtt-topic-prefix" "${MQTT_TOPIC_PREFIX}"
-    "--mqtt-publish-interval" "${MQTT_PUBLISH_INTERVAL}"
     "--remote-error-cache" "/data/error-cache.json"
     "--remote-error-cache-days" "${REMOTE_ERROR_CACHE_DAYS}"
     "--remote-error-device-id" "${REMOTE_ERROR_DEVICE_ID}"
@@ -143,14 +127,6 @@ fi
 if [[ "${BUS_LOG}" == "true" ]]; then
     mkdir -p /data/logs
     ARGS+=("--bus-log" "/data/logs/airtouch-bus.jsonl")
-fi
-
-if [[ "${MQTT_ENABLED}" == "true" ]]; then
-    ARGS+=("--mqtt-enabled")
-fi
-
-if [[ "${MQTT_DISCOVERY}" != "true" ]]; then
-    ARGS+=("--no-mqtt-discovery")
 fi
 
 if [[ "${REMOTE_ERROR_RESOLUTION}" == "true" ]]; then

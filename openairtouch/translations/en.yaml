@@ -65,33 +65,6 @@ configuration:
   weather_poll_interval:
     name: Weather Poll Interval
     description: Seconds between local Home Assistant weather and indoor sensor reads.
-  mqtt_enabled:
-    name: MQTT Publishing
-    description: Publish AirTouch state and read-only climate discovery to MQTT.
-  mqtt_host:
-    name: MQTT Host
-    description: MQTT broker host. Leave blank to use the Mosquitto app default host core-mosquitto.
-  mqtt_port:
-    name: MQTT Port
-    description: MQTT broker port.
-  mqtt_username:
-    name: MQTT Username
-    description: Optional MQTT username.
-  mqtt_password:
-    name: MQTT Password
-    description: Optional MQTT password.
-  mqtt_discovery:
-    name: MQTT Discovery
-    description: Publish Home Assistant discovery for read-only AirTouch climate entities.
-  mqtt_discovery_prefix:
-    name: MQTT Discovery Prefix
-    description: Home Assistant MQTT discovery prefix.
-  mqtt_topic_prefix:
-    name: MQTT Topic Prefix
-    description: Base topic used for AirTouch state publishing.
-  mqtt_publish_interval:
-    name: MQTT Publish Interval
-    description: Seconds between MQTT state publishes.
   remote_error_resolution:
     name: Remote Error Lookup
     description: Resolve AC fault descriptions through the AirTouch update endpoint after local APK tables are checked.

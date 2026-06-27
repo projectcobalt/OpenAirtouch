@@ -1551,7 +1551,7 @@ INDEX_HTML = """<!doctype html>
       if (raw === "-") return raw;
       return raw
         .replace(/\b([a-z])/g, (match) => match.toUpperCase())
-        .replace(/\b(Ac|Led|Mqtt|Tcp|Ui|Rx|Tx|Ok)\b/g, (match) => match.toUpperCase());
+        .replace(/\b(Ac|Led|Tcp|Ui|Rx|Tx|Ok)\b/g, (match) => match.toUpperCase());
     }
 
     function row(cells) {
@@ -1852,11 +1852,6 @@ INDEX_HTML = """<!doctype html>
       if (forecastError) alerts.push(`Forecast weather: ${describeControllerError(forecastError)}`);
       const indoorError = integrations && integrations.indoor && integrations.indoor.error;
       if (indoorError) alerts.push(`Indoor climate: ${describeControllerError(indoorError)}`);
-      const mqtt = integrations && integrations.mqtt;
-      if (mqtt && mqtt.enabled && mqtt.error) alerts.push(`MQTT: ${describeControllerError(mqtt.error)}`);
-      if (mqtt && mqtt.enabled && mqtt.error && Number(mqtt.failed_publish_count) > 0) {
-        alerts.push(`MQTT publish failures: ${mqtt.failed_publish_count}`);
-      }
       const errorResolver = integrations && integrations.error_resolver;
       if (errorResolver && errorResolver.enabled && errorResolver.last_error) {
         alerts.push(`Error lookup: ${describeControllerError(errorResolver.last_error)}`);
@@ -1890,7 +1885,6 @@ INDEX_HTML = """<!doctype html>
       if (/ConnectionRefusedError|ECONNREFUSED/i.test(message)) return `Runtime Connection Refused: ${message}`;
       if (/TimeoutError|timed out/i.test(message)) return `Runtime Timeout: ${message}`;
       if (/SerialException|could not open port/i.test(message)) return `Serial Transport Error: ${message}`;
-      if (/mqtt/i.test(message)) return `MQTT Error: ${message}`;
       return message;
     }
 

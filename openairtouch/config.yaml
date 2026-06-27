@@ -21,8 +21,6 @@ uart: true
 homeassistant_api: true
 discovery:
   - openairtouch
-services:
-  - mqtt:need
 ports:
   8099/tcp: null
 ports_description:
@@ -51,15 +49,6 @@ options:
   solar_irradiance_entity: ""
   cloud_cover_entity: ""
   weather_poll_interval: 60.0
-  mqtt_enabled: true
-  mqtt_host: ""
-  mqtt_port: 1883
-  mqtt_username: ""
-  mqtt_password: ""
-  mqtt_discovery: true
-  mqtt_discovery_prefix: homeassistant
-  mqtt_topic_prefix: openairtouch
-  mqtt_publish_interval: 10.0
   remote_error_resolution: false
   remote_error_cache_days: 2.0
   remote_error_device_id: ""
@@ -89,15 +78,6 @@ schema:
   solar_irradiance_entity: str
   cloud_cover_entity: str
   weather_poll_interval: float
-  mqtt_enabled: bool
-  mqtt_host: str
-  mqtt_port: int
-  mqtt_username: str
-  mqtt_password: password
-  mqtt_discovery: bool
-  mqtt_discovery_prefix: str
-  mqtt_topic_prefix: str
-  mqtt_publish_interval: float
   remote_error_resolution: bool
   remote_error_cache_days: float
   remote_error_device_id: str

@@ -21,7 +21,6 @@ from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, Tcp
 from .adaptive import AdaptiveConfig, AdaptiveController
 from .error_resolver import RemoteErrorResolver, RemoteErrorResolverConfig
 from .ha_client import HomeAssistantApiClient, HomeAssistantApiConfig
-from .mqtt import MqttConfig, MqttStatePublisher
 
 TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
 LOG = logging.getLogger("uvicorn.error")
@@ -42,7 +41,6 @@ class RuntimeControllerConfig:
     ui_theme: str = "system"
     weather: HomeAssistantApiConfig = HomeAssistantApiConfig()
     weather_poll_interval: float = 60.0
-    mqtt: MqttConfig = MqttConfig()
     error_resolver: RemoteErrorResolverConfig = RemoteErrorResolverConfig()
     adaptive: AdaptiveConfig = AdaptiveConfig()
     adaptive_config_path: Path | None = None
@@ -81,9 +79,7 @@ class RuntimeController:
         self._sun: dict[str, Any] | None = None
         self._sun_error: str | None = None
         self._next_weather_poll = 0.0
-        self._next_mqtt_publish = 0.0
         self._ha_client = HomeAssistantApiClient(config.weather)
-        self._mqtt = MqttStatePublisher(config.mqtt)
         self._error_resolver = RemoteErrorResolver(config.error_resolver)
         self._adaptive_config_path = config.adaptive_config_path
         self._adaptive = AdaptiveController(_load_adaptive_config(config.adaptive, config.adaptive_config_path))
@@ -153,7 +149,6 @@ class RuntimeController:
                         "state": self._sun,
                         "error": self._sun_error,
                     },
-                    "mqtt": self._mqtt.status(),
                     "error_resolver": self._error_resolver.status(),
                     "adaptive": self._adaptive.status(),
                 },
@@ -210,13 +205,6 @@ class RuntimeController:
             "solar_irradiance_entity": self.config.weather.solar_irradiance_entity,
             "cloud_cover_entity": self.config.weather.cloud_cover_entity,
             "weather_poll_interval": self.config.weather_poll_interval,
-            "mqtt_enabled": self.config.mqtt.enabled,
-            "mqtt_host": self.config.mqtt.broker_host if self.config.mqtt.enabled else "",
-            "mqtt_port": self.config.mqtt.broker_port,
-            "mqtt_discovery": self.config.mqtt.discovery,
-            "mqtt_discovery_prefix": self.config.mqtt.discovery_prefix,
-            "mqtt_topic_prefix": self.config.mqtt.topic_prefix,
-            "mqtt_publish_interval": self.config.mqtt.publish_interval,
             "remote_error_resolution": self.config.error_resolver.enabled,
             "remote_error_cache": (
                 str(self.config.error_resolver.cache_path)
@@ -261,7 +249,6 @@ class RuntimeController:
                             self._record_event(event, logger)
                         self._poll_weather()
                         self._run_adaptive(runtime)
-                        self._publish_mqtt()
                         time.sleep(self.config.loop_sleep)
             except Exception as exc:  # pragma: no cover - exercised in live runs
                 self._record_controller_error(exc)
@@ -269,7 +256,6 @@ class RuntimeController:
         with self._lock:
             self._status = "stopped"
             self._mark_changed_locked()
-        self._mqtt.stop()
         self._error_resolver.stop()
 
     def _drain_commands(self, runtime: AirTouchRuntime) -> None:
@@ -410,15 +396,6 @@ class RuntimeController:
                 self._sun = None
                 self._sun_error = None
                 self._mark_changed_locked()
-
-    def _publish_mqtt(self) -> None:
-        if not self.config.mqtt.enabled:
-            return
-        now = time.monotonic()
-        if now < self._next_mqtt_publish:
-            return
-        self._next_mqtt_publish = now + max(2.0, self.config.mqtt.publish_interval)
-        self._mqtt.publish(self.snapshot())
 
     def _run_adaptive(self, runtime: AirTouchRuntime) -> None:
         runtime_snapshot = runtime.snapshot()
