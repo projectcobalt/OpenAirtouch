@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-06-28
+
+- Resolve group-local RF sensor slots to concrete sensor addresses in `/api/state`, exposing one-to-one sensor owner fields and zone-side `sensor_id` metadata for Home Assistant device placement.
+
 ## 0.3.1 - 2026-06-28
 
 - Expose explicit sensor-to-zone mapping fields in `/api/state` sensor rows so Home Assistant integrations can attach RF sensors to the correct zone without address heuristics.

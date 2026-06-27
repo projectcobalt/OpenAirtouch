@@ -151,6 +151,7 @@ class AirTouchState:
             self.system[kind] = decoded
 
     def snapshot(self) -> dict[str, Any]:
+        self._refresh_group_sensor_refs()
         return {
             "system": self.system,
             "acs": self.acs,
@@ -210,6 +211,8 @@ class AirTouchState:
         rows: list[dict[str, Any]] = []
         for sensor, data in sorted(self.sensors.items()):
             mappings = mapped.get(sensor, [])
+            mapping_status = "resolved" if len(mappings) == 1 else "ambiguous" if mappings else "unmapped"
+            resolved_mapping = mappings[0] if mapping_status == "resolved" else None
             rows.append({
                 "id": sensor,
                 "address": f"0x{sensor:02X}" if sensor >= 0x80 else str(sensor),
@@ -223,9 +226,14 @@ class AirTouchState:
                 "battery": data.get("battery"),
                 "low_battery": data.get("low_battery"),
                 "mac": data.get("mac"),
-                "mapped_groups": [mapping["name"] for mapping in mappings],
-                "mapped_group_ids": [mapping["group_id"] for mapping in mappings],
-                "mapped_zones": mappings,
+                "mapping_status": mapping_status,
+                "resolved_group_id": None if resolved_mapping is None else resolved_mapping["group_id"],
+                "resolved_zone_id": None if resolved_mapping is None else resolved_mapping["zone_id"],
+                "mapped_groups": [] if resolved_mapping is None else [resolved_mapping["name"]],
+                "mapped_group_ids": [] if resolved_mapping is None else [resolved_mapping["group_id"]],
+                "mapped_zones": [] if resolved_mapping is None else [resolved_mapping],
+                "mapping_candidate_group_ids": [mapping["group_id"] for mapping in mappings] if mapping_status == "ambiguous" else [],
+                "mapping_candidates": mappings if mapping_status == "ambiguous" else [],
             })
 
         for supply in self.system.get("supply_air", []) or []:
@@ -245,16 +253,21 @@ class AirTouchState:
                 "battery": None,
                 "low_battery": None,
                 "mac": None,
+                "mapping_status": "unmapped",
+                "resolved_group_id": None,
+                "resolved_zone_id": None,
                 "mapped_groups": [],
                 "mapped_group_ids": [],
                 "mapped_zones": [],
+                "mapping_candidate_group_ids": [],
+                "mapping_candidates": [],
                 "ac": ac,
             })
         return rows
 
     def _sensor_zone_mappings(self) -> dict[int, list[dict[str, Any]]]:
         mapped: dict[int, list[dict[str, Any]]] = {}
-        for group_id, group in sorted(self.groups.items()):
+        for group_id, group in sorted(self.active_groups().items()):
             zone_mapping = self._zone_mapping_for_group(group_id, group)
             if zone_mapping is None:
                 continue
@@ -263,24 +276,25 @@ class AirTouchState:
         return mapped
 
     def _zone_mapping_for_group(self, group_id: int, group: dict[str, Any]) -> tuple[int, dict[str, Any]] | None:
-        grouping = group.get("grouping") or {}
         status = group.get("status") or {}
-        sensor = grouping.get("thermostat")
-        source = "grouping.thermostat"
-        if not isinstance(sensor, int):
-            sensor = status.get("sensor")
-            source = "group_status.sensor"
-        if not isinstance(sensor, int) or sensor == 255:
+        sensor_ref = self._sensor_ref_for_group(group_id, group)
+        sensor = sensor_ref.get("sensor_id")
+        if status.get("has_sensor") is not True or not isinstance(sensor, int):
             return None
 
+        grouping = group.get("grouping") or {}
         name = group.get("name") or f"Zone {group_id + 1}"
         mapping: dict[str, Any] = {
             "group_id": group_id,
             "zone_id": group_id,
             "zone_number": group_id + 1,
             "name": name,
-            "source": source,
+            "source": sensor_ref.get("source"),
+            "sensor_id": sensor,
+            "sensor_kind": sensor_ref.get("sensor_kind"),
         }
+        if sensor_ref.get("sensor_slot") is not None:
+            mapping["sensor_slot"] = sensor_ref["sensor_slot"]
         ac_id = self._ac_id_for_group(group_id)
         if ac_id is not None:
             mapping["ac_id"] = ac_id
@@ -289,6 +303,44 @@ class AirTouchState:
         if isinstance(grouping.get("zone_count"), int):
             mapping["damper_zone_count"] = grouping["zone_count"]
         return sensor, mapping
+
+    def _refresh_group_sensor_refs(self) -> None:
+        for group_id, group in self.groups.items():
+            status = group.get("status")
+            if not isinstance(status, dict):
+                continue
+            sensor_ref = self._sensor_ref_for_group(group_id, group)
+            status["sensor_id"] = sensor_ref.get("sensor_id")
+            status["sensor_kind"] = sensor_ref.get("sensor_kind")
+            status["sensor_slot"] = sensor_ref.get("sensor_slot")
+            status["sensor_source"] = sensor_ref.get("source")
+            status["sensor_mapping_status"] = sensor_ref["mapping_status"]
+
+    def _sensor_ref_for_group(self, group_id: int, group: dict[str, Any]) -> dict[str, Any]:
+        status = group.get("status") or {}
+        if status.get("has_sensor") is not True:
+            return _sensor_ref(None, None, None, None, "unmapped")
+
+        grouping = group.get("grouping") or {}
+        thermostat = grouping.get("thermostat")
+        if isinstance(thermostat, int):
+            if 0 <= thermostat <= 1:
+                sensor_flag = grouping.get(f"has_sensor_{thermostat + 1}")
+                if sensor_flag is False:
+                    return _sensor_ref(None, None, None, "grouping.sensor_slot", "unmapped")
+                sensor_id = (group_id * 2) + thermostat
+                return _sensor_ref(sensor_id, "rf", thermostat + 1, "grouping.sensor_slot", "resolved")
+            if thermostat in (0x90, 0x91):
+                return _sensor_ref(thermostat, "touchpad", None, "grouping.touchpad", "resolved")
+            if thermostat == 0xFF:
+                return _sensor_ref(None, None, None, "grouping.auto", "unmapped")
+            return _sensor_ref(None, None, None, "grouping.thermostat", "ambiguous")
+
+        sensor = status.get("sensor")
+        if isinstance(sensor, int) and sensor != 255:
+            kind = "touchpad" if sensor in (0x90, 0x91) else "rf"
+            return _sensor_ref(sensor, kind, None, "group_status.sensor", "resolved")
+        return _sensor_ref(None, None, None, None, "unmapped")
 
     def _ac_id_for_group(self, group_id: int) -> int | None:
         for ac_id, ac in sorted(self.acs.items()):
@@ -324,3 +376,13 @@ class AirTouchState:
         if not isinstance(count, int):
             return {key: value for key, value in self.groups.items() if "status" in value}
         return {key: value for key, value in self.groups.items() if key < count}
+
+
+def _sensor_ref(sensor_id: int | None, kind: str | None, slot: int | None, source: str | None, status: str) -> dict[str, Any]:
+    return {
+        "sensor_id": sensor_id,
+        "sensor_kind": kind,
+        "sensor_slot": slot,
+        "source": source,
+        "mapping_status": status,
+    }

@@ -92,7 +92,7 @@ def decode_set_grouping(payload: bytes) -> dict[str, Any]:
         "zone_count": ((payload[1] & 0xC0) >> 6) + 1,
         "min_percent": payload[2],
         "thermostat": thermostat,
-        "thermostat_name": SENSOR_SELECTORS.get(thermostat, f"sensor_addr_{thermostat}"),
+        "thermostat_name": _grouping_thermostat_name(thermostat),
         "tail": hex_bytes(payload[4:]),
     }
 
@@ -112,6 +112,12 @@ def _available_grouping_selectors(flags: int) -> list[str]:
     return selectors
 
 
+def _grouping_thermostat_name(thermostat: int) -> str:
+    if thermostat in (0, 1):
+        return f"rf_sensor_{thermostat + 1}"
+    return SENSOR_SELECTORS.get(thermostat, f"sensor_addr_{thermostat}")
+
+
 def decode_grouping(payload: bytes) -> dict[str, Any]:
     records = []
     for offset in range(0, len(payload) - 4, 5):
@@ -125,7 +131,7 @@ def decode_grouping(payload: bytes) -> dict[str, Any]:
             "zone_count": ((rec[1] & 0xC0) >> 6) + 1,
             "min_percent": rec[2],
             "thermostat": thermostat,
-            "thermostat_name": SENSOR_SELECTORS.get(thermostat, f"sensor_addr_{thermostat}"),
+            "thermostat_name": _grouping_thermostat_name(thermostat),
             "available_selectors": _available_grouping_selectors(flags),
             "has_sensor_1": bit(flags, 0x01),
             "has_sensor_2": bit(flags, 0x02),
