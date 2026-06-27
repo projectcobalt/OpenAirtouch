@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from airtouch4.service.adaptive import AdaptiveConfig, AdaptiveController
-from airtouch4.service.adaptive_mpc import ZoneThermalModel
+from airtouch4.service.adaptive_model import AdaptiveRoom
+from airtouch4.service.adaptive_mpc import AdaptiveMpcEngine, MpcInputs, ZoneThermalModel
 
 
 def ready_model() -> ZoneThermalModel:
@@ -562,6 +564,78 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertIn("temperature", forecast[0])
         self.assertIn("outdoor_temperature", forecast[0])
 
+    def test_mpc_proposal_accepts_separated_forecast_inputs(self) -> None:
+        engine = AdaptiveMpcEngine()
+        engine.zone_models[0] = ready_model()
+        room = AdaptiveRoom(
+            id=0,
+            name="Zone 1",
+            ac_id=0,
+            temperature=25,
+            setpoint=24,
+            active=True,
+            learn=True,
+            configured_control=True,
+            control_enabled=True,
+        )
+
+        proposal = engine.propose(
+            ac_id=0,
+            rooms=(room,),
+            baseline_target=24,
+            cooling=True,
+            inputs=MpcInputs(
+                horizon_hours=1,
+                outside_temperature=31,
+                outside_forecast=(31, 30, 29),
+                outside_forecast_step_minutes=5,
+                humidity=65,
+                q_solar=0.4,
+                input_quality={"forecast": {"status": "ok", "used_for_control": True}},
+            ),
+        )
+
+        self.assertIsNotNone(proposal)
+        assert proposal is not None
+        self.assertIsNotNone(proposal.runtime_forecast)
+        assert proposal.runtime_forecast is not None
+        self.assertEqual(proposal.runtime_forecast.horizon_hours, 1)
+        self.assertEqual(proposal.runtime_forecast.step_minutes, 5.0)
+        self.assertEqual(len(proposal.runtime_forecast.series), 12)
+        self.assertEqual(proposal.runtime_forecast.series[0]["outside_temperature"], 31)
+        self.assertGreaterEqual(proposal.runtime_forecast.runtime_minutes, 0.0)
+        self.assertGreaterEqual(proposal.runtime_forecast.quality["solve_duration_ms"], 0.0)
+        self.assertGreaterEqual(proposal.runtime_forecast.quality["optimizer_duration_ms"], 0.0)
+        self.assertEqual(proposal.runtime_forecast.quality["horizon_blocks"], 12)
+        self.assertEqual(proposal.runtime_forecast.quality["zone_count"], 1)
+        self.assertEqual(proposal.runtime_forecast.quality["series_points"], 12)
+        self.assertEqual(proposal.runtime_forecast.quality["input_forecast_points"], 3)
+        self.assertEqual(proposal.runtime_forecast.quality["solver_status"], "ok")
+        self.assertEqual(engine.forecasts[0][0]["outdoor_temperature"], 31)
+        self.assertEqual(engine.forecasts[0][1]["outdoor_temperature"], 30)
+        self.assertEqual(engine.forecasts[0][2]["outdoor_temperature"], 29)
+
+    def test_runtime_forecast_is_exposed_in_adaptive_status(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="recommend", learning_mode="control", control_zones=(0,)))
+        controller._mpc.zone_models[0] = ready_model()
+
+        controller.evaluate(
+            runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25),
+            integrations(31, forecast=[{"temperature": 31}, {"temperature": 30}]),
+            now=1.0,
+        )
+
+        runtime = controller.status()["evaluations"][0]["mpc"]["runtime_forecast"]
+        self.assertEqual(runtime["horizon_hours"], 6)
+        self.assertEqual(runtime["step_minutes"], 5.0)
+        self.assertIn("runtime_hours", runtime)
+        self.assertIn("action_windows", runtime)
+        self.assertEqual(len(runtime["series"]), 72)
+        self.assertIn("average_indoor_temperature", runtime["series"][0])
+        self.assertEqual(runtime["quality"]["status"], "ok")
+        self.assertGreaterEqual(runtime["quality"]["solve_duration_ms"], 0.0)
+        self.assertEqual(runtime["quality"]["horizon_blocks"], 72)
+
     def test_adaptive_mode_uses_fahrenheit_weather_source(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1, control_zones=(0,)))
 
@@ -617,6 +691,74 @@ class AdaptiveControllerTests(unittest.TestCase):
 
         self.assertEqual(specs, [])
         self.assertEqual(controller.status()["forecast_temperatures"], [25, 26])
+        self.assertEqual(controller.status()["forecast_quality"]["status"], "untimed")
+
+    def test_timestamped_ha_forecast_is_sorted_and_marked_timed(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1, control_zones=(0,)))
+        start = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+        controller.evaluate(
+            runtime_state(ac_setpoint=22, zone_setpoint=22),
+            integrations(
+                30,
+                forecast=[
+                    {"datetime": (start + timedelta(hours=2)).isoformat(), "temperature": 27},
+                    {"datetime": start.isoformat(), "temperature": 25},
+                    {"datetime": (start + timedelta(hours=1)).isoformat(), "temperature": 26},
+                    {"datetime": (start + timedelta(hours=3)).isoformat(), "temperature": 28},
+                    {"datetime": (start + timedelta(hours=4)).isoformat(), "temperature": 29},
+                    {"datetime": (start + timedelta(hours=5)).isoformat(), "temperature": 30},
+                    {"datetime": (start + timedelta(hours=6)).isoformat(), "temperature": 31},
+                ],
+            ),
+            now=1.0,
+        )
+
+        status = controller.status()
+        self.assertEqual(status["forecast_temperatures"][:3], [25, 26, 27])
+        self.assertEqual(status["forecast_quality"]["status"], "ok")
+        self.assertTrue(status["forecast_quality"]["timed"])
+        self.assertTrue(status["forecast_quality"]["used_for_control"])
+        self.assertEqual(status["forecast_quality"]["step_minutes"], 5.0)
+
+    def test_timestamp_keyed_forecast_dict_is_accepted(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1, control_zones=(0,)))
+        start = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+        controller.evaluate(
+            runtime_state(ac_setpoint=22, zone_setpoint=22),
+            {
+                "weather": {"state": {"temperature": 30, "temperature_unit": "C"}},
+                "forecast": {
+                    "state": {
+                        "forecast": {
+                            (start + timedelta(hours=hour)).isoformat(): {"temperature": 24 + hour}
+                            for hour in range(7)
+                        }
+                    }
+                },
+            },
+            now=1.0,
+        )
+
+        status = controller.status()
+        self.assertEqual(status["forecast_temperatures"][:2], [24, 25])
+        self.assertEqual(status["forecast_quality"]["status"], "ok")
+        self.assertTrue(status["forecast_quality"]["timed"])
+
+    def test_stale_timestamped_forecast_is_not_used_for_auto_off_gate(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="auto_off", command_cooldown=1))
+        old = datetime.now(timezone.utc) - timedelta(hours=3)
+
+        specs = controller.evaluate(
+            runtime_state(ac_setpoint=24),
+            integrations(20, forecast=[{"datetime": old.isoformat(), "temperature": 35}]),
+            now=1.0,
+        )
+
+        self.assertEqual(len(specs), 1)
+        self.assertEqual(controller.status()["forecast_quality"]["status"], "stale")
+        self.assertFalse(controller.status()["forecast_quality"]["used_for_control"])
 
     def test_solar_irradiance_watts_is_normalized_and_recorded(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1, control_zones=(0,)))
