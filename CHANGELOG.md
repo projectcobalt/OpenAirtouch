@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 - 2026-07-01
+
+- Replace deprecated FastAPI startup/shutdown event hooks with an application lifespan handler.
+- Split adaptive control into focused signal, intent, restore, and strategy layers while preserving the existing control behavior and test coverage.
+
 ## 0.5.0 - 2026-07-01
 
 - Feed adaptive room power-fraction estimates into the thermal prediction and EKF learning path instead of using full-power active observations for every zone.
