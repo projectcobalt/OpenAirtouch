@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any
 
 from .commands import CommandRequestError, build_transaction
@@ -23,15 +24,15 @@ def create_app(controller: RuntimeController):
     if FastAPI is None:  # pragma: no cover - import guard
         raise RuntimeError("FastAPI is required for the service API. Install dependencies from requirements.txt")
 
-    app = FastAPI(title="OpenAirTouch", version="0.5.0")
-
-    @app.on_event("startup")
-    def _startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         controller.start()
+        try:
+            yield
+        finally:
+            controller.stop()
 
-    @app.on_event("shutdown")
-    def _shutdown() -> None:
-        controller.stop()
+    app = FastAPI(title="OpenAirTouch", version="0.5.0", lifespan=lifespan)
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

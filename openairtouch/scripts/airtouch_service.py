@@ -162,7 +162,13 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
     )
-    uvicorn.run(create_app(controller), host=args.host, port=args.http_port, log_level=args.log_level)
+    uvicorn.run(
+        create_app(controller),
+        host=args.host,
+        port=args.http_port,
+        log_level=args.log_level,
+        ws="websockets-sansio",
+    )
     return 0
 
 

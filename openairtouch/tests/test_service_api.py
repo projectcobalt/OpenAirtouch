@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 import unittest
+import warnings
 from typing import Any
 
 import uvicorn
@@ -19,12 +20,14 @@ class FakeController:
         self._condition = threading.Condition()
         self._version = 0
         self._events: list[dict[str, Any]] = []
+        self.started = 0
+        self.stopped = 0
 
     def start(self) -> None:
-        return None
+        self.started += 1
 
     def stop(self) -> None:
-        return None
+        self.stopped += 1
 
     def health(self) -> dict[str, Any]:
         return {"ok": True, "status": "running"}
@@ -75,11 +78,34 @@ def _wait_for_port(port: int) -> None:
 
 
 class ServiceApiTests(unittest.TestCase):
+    def test_lifespan_starts_and_stops_controller_without_fastapi_deprecation(self) -> None:
+        controller = FakeController()
+
+        async def run_lifespan() -> None:
+            async with app.router.lifespan_context(app):
+                self.assertEqual(controller.started, 1)
+                self.assertEqual(controller.stopped, 0)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", category=DeprecationWarning, module=r"fastapi\..*")
+            warnings.filterwarnings("error", ".*on_event is deprecated.*", DeprecationWarning)
+            app = create_app(controller)
+            asyncio.run(run_lifespan())
+
+        self.assertEqual(controller.started, 1)
+        self.assertEqual(controller.stopped, 1)
+
     def test_websocket_sends_initial_state_then_batched_events_and_state(self) -> None:
         controller = FakeController()
         port = _free_port()
         server = uvicorn.Server(
-            uvicorn.Config(create_app(controller), host="127.0.0.1", port=port, log_level="warning")
+            uvicorn.Config(
+                create_app(controller),
+                host="127.0.0.1",
+                port=port,
+                log_level="warning",
+                ws="websockets-sansio",
+            )
         )
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
