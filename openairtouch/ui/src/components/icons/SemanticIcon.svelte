@@ -1,10 +1,12 @@
 <script>
   import {
     Activity,
+    ArrowLeftRight,
     Circle,
     Droplets,
     Fan,
     Flame,
+    House,
     Minus,
     Plus,
     Power,
@@ -12,6 +14,7 @@
     Settings,
     Snowflake,
     Thermometer,
+    ThermometerSun,
     Waves,
     Wind
   } from "@lucide/svelte";
@@ -23,17 +26,20 @@
 
   const icons = {
     activity: Activity,
+    arrowsHorizontal: ArrowLeftRight,
     cool: Snowflake,
     damper: Waves,
     dry: Droplets,
     fan: Fan,
     heat: Flame,
     humidity: Droplets,
+    indoor: House,
     minus: Minus,
+    outdoor: ThermometerSun,
     plus: Plus,
     power: Power,
     refresh: RefreshCw,
-    room: Thermometer,
+    room: House,
     service: Settings,
     status: Circle,
     temperature: Thermometer,

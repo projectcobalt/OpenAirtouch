@@ -12,6 +12,7 @@
   export let runtimeMetrics = [];
   export let sensorRows = [];
   export let groupEntries = [];
+  export let selectedGroupEntries = [];
   export let acEntries = [];
   export let balanceRows = {};
   export let rootState = {};
@@ -35,6 +36,15 @@
   export let saveParameters = () => {};
   export let saveService = () => {};
   export let onView = () => {};
+
+  $: scopedGroupEntries = selectedGroupEntries.length ? selectedGroupEntries : groupEntries;
+  $: scopedGroupIds = new Set(scopedGroupEntries.map(([id]) => Number(id)));
+  $: scopedSensorRows = sensorRows.filter((sensor) => {
+    const mappedIds = Array.isArray(sensor.mapped_group_ids) ? sensor.mapped_group_ids.map(Number) : [];
+    if (sensor.resolved_group_id !== undefined && sensor.resolved_group_id !== null && scopedGroupIds.has(Number(sensor.resolved_group_id))) return true;
+    if (mappedIds.some((groupId) => scopedGroupIds.has(groupId))) return true;
+    return mappedIds.length === 0 && (sensor.resolved_group_id === undefined || sensor.resolved_group_id === null);
+  });
 </script>
 <section class="cards-view">
         <ViewHeading title="Settings" detail={runtime.protocol_name || "Runtime"} />
@@ -77,7 +87,7 @@
             <button type="button" on:click={() => pairSensor(false)}>Stop Pair</button>
           </div>
           <div class="card-grid">
-            {#each sensorRows as sensor}
+            {#each scopedSensorRows as sensor}
               <article class="summary-card editor-card sensor-card" data-sensor-row={sensor.id}>
                 <div class="card-head">
                   <div class="card-title">{sensor.name}</div>
@@ -103,7 +113,7 @@
           </div>
         {:else if activeServiceView === "grouping"}
           <div class="card-grid">
-            {#each groupEntries as [id, group]}
+            {#each scopedGroupEntries as [id, group]}
               {@const grouping = group.grouping || {}}
               {@const status = group.status || {}}
               <article class="summary-card editor-card" data-service-group={id}>
@@ -132,7 +142,7 @@
             <article class="summary-card editor-card">
               <div class="card-title">Spill Zones</div>
               <div class="chip-grid">
-                {#each groupEntries as [id, group]}
+                {#each scopedGroupEntries as [id, group]}
                   {@const status = group.status || {}}
                   <label class="check-row"><input type="checkbox" data-spill-group value={Number(id)} checked={group.spill_configured || status.spill_on} /><span>{zoneName(id, group)}</span><span>{status.spill_on ? `Open ${status.percentage ?? "-"}%` : "Reported"}</span></label>
                 {/each}
@@ -151,7 +161,7 @@
           </div>
         {:else if activeServiceView === "balance"}
           <div class="card-grid">
-            {#each groupEntries as [id, group]}
+            {#each scopedGroupEntries as [id, group]}
               {@const balance = balanceRows[String(id)] || {}}
               {@const status = group.status || {}}
               <article class="summary-card editor-card balance-row" data-balance-zone={id}>

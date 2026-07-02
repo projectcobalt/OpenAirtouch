@@ -24,7 +24,6 @@
   let activeAdaptiveView = "status";
   let activeServiceView = "app";
   let selectedTheme = "system";
-  let zonePage = 0;
   let socket = null;
   let reconnectTimer = null;
   let pollTimer = null;
@@ -137,6 +136,20 @@
     return ac?.base?.name || `AC ${Number(id) + 1}`;
   }
 
+  function configuredAcEntries(entries) {
+    const declaredCount = finite(system.ac_count);
+    const filtered = entries.filter(([id, ac]) => {
+      const numeric = finite(id);
+      if (numeric === null) return false;
+      if (declaredCount !== null && declaredCount > 0) {
+        return numeric >= 0 && numeric < declaredCount;
+      }
+      const groupCount = finite(ac?.base?.group_count);
+      return groupCount === null || groupCount > 0;
+    });
+    return filtered.length ? filtered : entries;
+  }
+
   function groupIsConfigured(group) {
     return !!(group?.status || group?.name || group?.name_record || group?.grouping);
   }
@@ -152,14 +165,11 @@
 
   function groupBadges(group) {
     const status = group?.status || {};
-    const grouping = group?.grouping || {};
     const badges = [];
     if (groupIsSpill(group)) badges.push("Spill");
-    if (status.sensor_control || status.has_sensor) badges.push("Sensor");
     if (status.low_battery) badges.push("Battery");
     if (status.timer_on) badges.push("Program");
     if (status.power_name === "turbo") badges.push("Turbo");
-    if (grouping.thermostat_name) badges.push(grouping.thermostat_name);
     return badges.slice(0, 3);
   }
 
@@ -167,20 +177,45 @@
     return group?.name || group?.name_record?.name || `Zone ${Number(id) + 1}`;
   }
 
-  function activeZoneEntriesForAc(ac) {
+  function groupEntriesForAc(ac, {includeSpill = false} = {}) {
     const base = ac?.base || {};
     const start = finite(base.group_start) ?? 0;
-    const count = finite(base.group_count) ?? groupEntries.length;
+    const count = finite(base.group_count);
+    const includeGroup = (group) => groupIsConfigured(group) && (includeSpill || !groupIsSpill(group));
+    if (count === null) {
+      return groupEntries.filter(([_id, group]) => includeGroup(group));
+    }
     const end = start + count;
     return groupEntries.filter(([id, group]) => {
       const numeric = Number(id);
-      return numeric >= start && numeric < end && groupIsConfigured(group) && !groupIsSpill(group);
+      return numeric >= start && numeric < end && includeGroup(group);
     });
+  }
+
+  function activeZoneEntriesForAc(ac) {
+    return groupEntriesForAc(ac, {includeSpill: false});
   }
 
   function average(values) {
     const clean = values.map(finite).filter((value) => value !== null);
     return clean.length ? clean.reduce((total, value) => total + value, 0) / clean.length : null;
+  }
+
+  function firstFinite(...values) {
+    for (const value of values) {
+      const numeric = finite(value);
+      if (numeric !== null) return numeric;
+    }
+    return null;
+  }
+
+  function sensorViewRows() {
+    return Array.isArray(rootState.sensor_view) ? rootState.sensor_view : [];
+  }
+
+  function zoneRoomTemperature(id, group) {
+    const status = group?.status || {};
+    return firstFinite(status.temperature, status.current_temp, status.sensor_temp);
   }
 
   function firstSensorName(zones) {
@@ -208,13 +243,6 @@
     };
   }
 
-  function runtimeHoursText(value) {
-    const hours = finite(value);
-    if (hours === null) return "-";
-    if (hours >= 1000) return `${Math.round(hours).toLocaleString()} h`;
-    return `${Math.round(hours)} h`;
-  }
-
   function acSourceHint(ac, zones, thermostat) {
     const settings = ac?.settings || {};
     const selector = finite(settings.ctrl_thermostat);
@@ -228,42 +256,181 @@
     return thermostat.current === null ? "No live room sensor" : "Current room temperature";
   }
 
-  function hiddenSpillHints(allZones, visibleZones) {
-    const visible = new Set(visibleZones.map(([id]) => String(id)));
-    return allZones
-      .filter(([id, group]) => !visible.has(String(id)) && groupIsSpill(group))
-      .map(([id, group]) => {
-        const status = group?.status || {};
-        const damper = finite(status.percentage);
-        return `${zoneName(id, group)} ${status.spill_on ? "open" : "spill"}${damper === null ? "" : ` ${Math.round(damper)}%`}`;
-      });
-  }
-
-  function temperatureHistoryEntries(zones) {
-    return zones
-      .flatMap(([_id, group]) => Array.isArray(group?.temperature_history) ? group.temperature_history : [])
-      .filter((entry) => finite(entry?.temperature) !== null)
-      .sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0))
+  function aggregateTemperatureHistory(zones, thermostat) {
+    const activeZones = zones.filter(([_id, group]) => groupIsOn(group));
+    const buckets = new Map();
+    for (const [_id, group] of activeZones) {
+      for (const entry of Array.isArray(group?.temperature_history) ? group.temperature_history : []) {
+        const temperature = finite(entry?.temperature);
+        const ts = finite(entry?.ts);
+        if (temperature === null || ts === null) continue;
+        const bucket = Math.floor(ts / 60) * 60;
+        const item = buckets.get(bucket) || {ts: bucket, total: 0, count: 0};
+        item.total += temperature;
+        item.count += 1;
+        buckets.set(bucket, item);
+      }
+    }
+    const entries = [...buckets.values()]
+      .filter((item) => item.count > 0)
+      .map((item) => ({ts: item.ts, temperature: item.total / item.count, zone_count: item.count}))
+      .sort((a, b) => a.ts - b.ts)
       .slice(-18);
+    if (!entries.length) {
+      const current = finite(thermostat?.current);
+      if (current !== null && activeZones.length) {
+        entries.push({ts: Math.floor(Date.now() / 1000), temperature: current, zone_count: activeZones.length});
+      }
+    }
+    return entries;
   }
 
-  function temperatureHistoryPath(entries) {
+  function thermalCallActive(current, setpoint, status) {
+    const mode = modeKey(status?.mode);
+    const tolerance = 0.15;
+    if (mode === "fan" || current === null || setpoint === null || status?.power_on !== true) return false;
+    if (mode === "cool" || mode === "dry") return current > setpoint + tolerance;
+    if (mode === "heat") return current < setpoint - tolerance;
+    return Math.abs(setpoint - current) > tolerance;
+  }
+
+  function plannedTemperatureEntries(historyEntries, thermostat, status, activeZoneCount) {
+    const setpoint = finite(thermostat?.setpoint);
+    const current = finite(historyEntries.at(-1)?.temperature) ?? finite(thermostat?.current);
+    if (setpoint === null || current === null || !activeZoneCount || status?.power_on !== true || modeKey(status?.mode) === "fan") return [];
+    const delta = setpoint - current;
+    const startTs = finite(historyEntries.at(-1)?.ts) ?? Math.floor(Date.now() / 1000);
+    return Array.from({length: 6}, (_item, index) => {
+      const progress = (index + 1) / 6;
+      const eased = 1 - ((1 - progress) ** 2);
+      return {
+        ts: startTs + ((index + 1) * 300),
+        temperature: current + (delta * eased),
+        planned: true
+      };
+    });
+  }
+
+  function planActionActive(entry) {
+    const action = String(entry?.action || "").toLowerCase();
+    const power = finite(entry?.power_fraction);
+    return (action && !["idle", "off", "none", "0"].includes(action)) || (power !== null && power > 0.01);
+  }
+
+  function runtimeForecastPlan(adaptiveState, acId) {
+    const plans = adaptiveState?.learning?.plans || adaptiveState?.plans || {};
+    const plan = plans?.[String(acId)] || plans?.[Number(acId)];
+    const series = plan?.runtime_forecast?.series;
+    if (!Array.isArray(series) || !series.length) return null;
+    const entries = series
+      .map((point) => {
+        const temperature = firstFinite(point.average_indoor_temperature, point.control_temperature, point.temperature);
+        if (temperature === null) return null;
+        return {
+          offset_minutes: finite(point.offset_minutes),
+          temperature,
+          setpoint: finite(point.target ?? plan.target),
+          action: point.action,
+          power_fraction: finite(point.power_fraction),
+          source: "runtime"
+        };
+      })
+      .filter(Boolean);
+    if (!entries.length) return null;
+    return {
+      entries,
+      setpoint: firstFinite(entries[0]?.setpoint, plan.target),
+      callActive: entries.some(planActionActive),
+      label: "Runtime plan"
+    };
+  }
+
+  function zoneForecastPlan(adaptiveState, zones) {
+    const forecasts = adaptiveState?.learning?.forecasts || adaptiveState?.forecasts || {};
+    const activeIds = zones.filter(([_id, group]) => groupIsOn(group)).map(([id]) => String(id));
+    if (!activeIds.length) return null;
+    const buckets = new Map();
+    for (const id of activeIds) {
+      const points = forecasts?.[id] || forecasts?.[Number(id)];
+      if (!Array.isArray(points)) continue;
+      for (const point of points) {
+        const temperature = finite(point?.temperature ?? point?.predicted_temperature ?? point?.prediction);
+        if (temperature === null) continue;
+        const offset = finite(point?.offset_minutes) ?? (buckets.size + 1) * 5;
+        const bucket = buckets.get(offset) || {offset_minutes: offset, total: 0, count: 0, callActive: false};
+        bucket.total += temperature;
+        bucket.count += 1;
+        bucket.callActive = bucket.callActive || planActionActive(point);
+        buckets.set(offset, bucket);
+      }
+    }
+    const entries = [...buckets.values()]
+      .filter((bucket) => bucket.count > 0)
+      .sort((a, b) => a.offset_minutes - b.offset_minutes)
+      .map((bucket) => ({
+        offset_minutes: bucket.offset_minutes,
+        temperature: bucket.total / bucket.count,
+        action: bucket.callActive ? "planned" : "idle",
+        power_fraction: bucket.callActive ? 1 : 0,
+        source: "zone"
+      }));
+    if (!entries.length) return null;
+    return {
+      entries,
+      setpoint: null,
+      callActive: entries.some(planActionActive),
+      label: "Zone plan"
+    };
+  }
+
+  function availableTemperaturePlan(adaptiveState, acId, zones) {
+    return runtimeForecastPlan(adaptiveState, acId) || zoneForecastPlan(adaptiveState, zones);
+  }
+
+  function temperatureChartPath(entries, domain, offset = 0, total = entries.length) {
     if (!entries.length) return "";
-    const values = entries.map((entry) => Number(entry.temperature));
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = Math.max(1, max - min);
+    const span = Math.max(1, domain.max - domain.min);
+    const denominator = Math.max(1, total - 1);
     return entries.map((entry, index) => {
-      const x = entries.length === 1 ? 120 : (index / (entries.length - 1)) * 120;
-      const y = 24 - ((Number(entry.temperature) - min) / span) * 18;
+      const x = total === 1 ? 120 : ((index + offset) / denominator) * 120;
+      const y = 24 - ((Number(entry.temperature) - domain.min) / span) * 18;
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(" ");
+  }
+
+  function temperatureChart(zones, thermostat, status, adaptiveState, acId) {
+    const activeZoneCount = zones.filter(([_id, group]) => groupIsOn(group)).length;
+    const historyEntries = aggregateTemperatureHistory(zones, thermostat);
+    const suppliedPlan = availableTemperaturePlan(adaptiveState, acId, zones);
+    const fallbackPlanEntries = plannedTemperatureEntries(historyEntries, thermostat, status, activeZoneCount);
+    const planEntries = suppliedPlan?.entries?.length ? suppliedPlan.entries : fallbackPlanEntries;
+    const planSeries = historyEntries.length && planEntries.length ? [historyEntries.at(-1), ...planEntries] : [];
+    const current = finite(historyEntries.at(-1)?.temperature) ?? finite(thermostat?.current);
+    const callActive = suppliedPlan?.entries?.length ? suppliedPlan.callActive : thermalCallActive(current, finite(thermostat?.setpoint), status);
+    const values = [...historyEntries, ...planEntries].map((entry) => finite(entry?.temperature)).filter((value) => value !== null);
+    const setpoint = firstFinite(suppliedPlan?.setpoint, thermostat?.setpoint);
+    if (setpoint !== null) values.push(setpoint);
+    if (!values.length) {
+      return {historyEntries, planEntries, historyPath: "", planPath: "", setpointPath: "", callAreaPath: "", callLabel: "No active zone demand"};
+    }
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = Math.max(0.4, (max - min) * 0.18);
+    const domain = {min: min - pad, max: max + pad};
+    const total = historyEntries.length + planEntries.length;
+    const historyPath = temperatureChartPath(historyEntries, domain, 0, total);
+    const planPath = temperatureChartPath(planSeries, domain, Math.max(0, historyEntries.length - 1), total);
+    const setpointY = setpoint === null ? null : 24 - ((setpoint - domain.min) / Math.max(1, domain.max - domain.min)) * 18;
+    const setpointPath = setpointY === null ? "" : `M0 ${setpointY.toFixed(1)} L120 ${setpointY.toFixed(1)}`;
+    const callStart = callActive && planEntries.length ? ((Math.max(0, historyEntries.length - 1) / Math.max(1, total - 1)) * 120) : null;
+    const callAreaPath = callStart === null ? "" : `M${callStart.toFixed(1)} 3 L120 3 L120 27 L${callStart.toFixed(1)} 27 Z`;
+    const callLabel = suppliedPlan?.label || (callActive ? "AC call plan" : activeZoneCount ? "Zone plan" : "No active zone demand");
+    return {historyEntries, planEntries, historyPath, planPath, setpointPath, callAreaPath, callLabel};
   }
 
   function keepSelectedAcValid() {
     if (!acEntries.some(([id]) => Number(id) === Number(selectedAcId))) {
       selectedAcId = Number(acEntries[0]?.[0] || 0);
-      zonePage = 0;
     }
   }
 
@@ -589,7 +756,7 @@
     const modeIntent = adaptive.mode_intent || {};
     const target = finite(adaptive.recommended_target ?? modeIntent.target ?? modeIntent.setpoint);
     const runtime = finite(adaptive.runtime_hours ?? adaptive.projected_runtime_hours ?? modeIntent.projected_runtime_hours);
-    const headline = modeIntent.name ? title(modeIntent.name) : target !== null ? `Recommended Target: ${target.toFixed(0)} C` : adaptiveReadyCount ? "Zone Models Ready" : "Waiting For Zones";
+    const headline = modeIntent.name ? title(modeIntent.name) : target !== null ? `Recommended Target: ${target.toFixed(0)}°` : adaptiveReadyCount ? "Zone Models Ready" : "Waiting For Zones";
     const summary = modeIntent.reason || adaptive.recommendations?.[0] || (adaptiveReadyCount ? `${adaptiveReadyCount} zone models are ready` : "Model Learning: Waiting For More Samples");
     return {
       headline,
@@ -629,13 +796,16 @@
       adaptiveMetric("Updates", zone.ekf_updates ?? "-"),
       adaptiveMetric("Confidence", zone.confidence === undefined ? "-" : percentText(Number(zone.confidence) * 100)),
       adaptiveMetric("Error", zone.prediction_std === undefined ? "-" : tempText(zone.prediction_std, 2)),
-      adaptiveMetric("Drift", zone.passive_drift_per_hour === undefined ? "-" : `${Number(zone.passive_drift_per_hour).toFixed(2)} C/h`),
-      adaptiveMetric("Response", zone.active_response_per_hour === undefined ? "-" : `${Number(zone.active_response_per_hour).toFixed(2)} C/h`),
-      adaptiveMetric("Outside", zone.outside_coupling_per_hour === undefined ? "-" : `${Number(zone.outside_coupling_per_hour).toFixed(2)} C/h`)
+      adaptiveMetric("Drift", zone.passive_drift_per_hour === undefined ? "-" : `${Number(zone.passive_drift_per_hour).toFixed(2)}°/h`),
+      adaptiveMetric("Response", zone.active_response_per_hour === undefined ? "-" : `${Number(zone.active_response_per_hour).toFixed(2)}°/h`),
+      adaptiveMetric("Outside", zone.outside_coupling_per_hour === undefined ? "-" : `${Number(zone.outside_coupling_per_hour).toFixed(2)}°/h`)
     ];
   }
 
   function sensorRowsFromState() {
+    const stateRows = sensorViewRows();
+    if (stateRows.length) return stateRows;
+
     const rows = [];
     const sensorList = system.sensor_list || {};
     const addresses = sensorList.sensor_addresses || system.sensor_addresses || [];
@@ -905,11 +1075,6 @@
     sendCommand("ac_status", {ac: selectedAcId, power_on: on}, `ac-power-${on}`);
   }
 
-  function setAcSetpoint(delta) {
-    const next = clamp(Math.round((selectedThermostat.setpoint ?? selectedAc?.status?.setpoint ?? 24) + delta), selectedThermostat.min, selectedThermostat.max);
-    sendCommand("ac_status", {ac: selectedAcId, setpoint: next}, `ac-setpoint-${delta}`);
-  }
-
   function setAcMode(mode) {
     sendCommand("ac_status", {ac: selectedAcId, mode: Number(mode)}, `ac-mode-${mode}`);
   }
@@ -981,39 +1146,35 @@
   $: groups = rootState.groups || {};
   $: favourites = rootState.favourites || {};
   $: programs = rootState.programs || {};
-  $: acEntries = Object.entries(acs).filter(([_id, ac]) => ac?.status || ac?.base || ac?.settings).sort((a, b) => Number(a[0]) - Number(b[0]));
+  $: rawAcEntries = Object.entries(acs).filter(([_id, ac]) => ac?.status || ac?.base || ac?.settings).sort((a, b) => Number(a[0]) - Number(b[0]));
+  $: acEntries = configuredAcEntries(rawAcEntries);
   $: groupEntries = Object.entries(groups).filter(([_id, group]) => groupIsConfigured(group)).sort((a, b) => {
     const az = finite(a[1]?.grouping?.ui_zone) ?? Number(a[0]) + 1;
     const bz = finite(b[1]?.grouping?.ui_zone) ?? Number(b[0]) + 1;
     return az - bz;
   });
-  $: selectedAc = acs[String(selectedAcId)] || acEntries[0]?.[1] || {};
   $: selectedAcId = Number(acEntries.find(([id]) => Number(id) === Number(selectedAcId))?.[0] ?? acEntries[0]?.[0] ?? selectedAcId);
+  $: selectedAc = acEntries.find(([id]) => Number(id) === Number(selectedAcId))?.[1] || acEntries[0]?.[1] || {};
   $: selectedStatus = selectedAc?.status || {};
   $: selectedSettings = selectedAc?.settings || {};
   $: acOptions = acEntries.map(([id, ac]) => [id, acName(id, ac)]);
-  $: selectedAcName = acName(selectedAcId, selectedAc);
-  $: selectedRuntimeText = runtimeHoursText(selectedAc.runtime?.running_hours ?? selectedAc.runtime?.minutes_or_flags);
   $: selectedModeOptions = configuredModes(selectedSettings);
   $: selectedFanOptions = configuredFans(selectedSettings);
   $: selectedZones = (groupEntries, activeZoneEntriesForAc(selectedAc));
+  $: selectedGroupEntries = (groupEntries, groupEntriesForAc(selectedAc, {includeSpill: true}));
   $: selectedThermostat = thermostatFor(selectedAc, selectedZones);
   $: selectedSensorName = firstSensorName(selectedZones);
   $: selectedRoomName = activeRoomName(selectedZones);
   $: selectedSourceHint = acSourceHint(selectedAc, selectedZones, selectedThermostat);
-  $: selectedSpillHints = hiddenSpillHints(groupEntries, selectedZones);
-  $: selectedHistoryEntries = temperatureHistoryEntries(selectedZones);
-  $: selectedHistoryPath = temperatureHistoryPath(selectedHistoryEntries);
   $: currentModeKey = modeKey(selectedStatus.mode);
+  $: selectedTemperatureChart = temperatureChart(selectedZones, selectedThermostat, selectedStatus, integrations.adaptive || {}, selectedAcId);
+  $: selectedHistoryEntries = selectedTemperatureChart.historyEntries;
   $: modeStyle = modeStyleFor(currentModeKey);
   $: activeZoneCount = selectedZones.filter(([_id, group]) => groupIsOn(group)).length;
   $: averageDamper = average(selectedZones.map(([_id, group]) => group?.status?.percentage));
   $: sensorRows = (system, groupEntries, sensorRowsFromState());
   $: balanceRows = Object.fromEntries(((system.balance?.zones || [])).map((zone) => [String(zone.zone), zone]));
   $: alerts = (snapshot, acEntries, collectAlerts());
-  $: zonePageCount = Math.max(1, Math.ceil(selectedZones.length / 8));
-  $: zonePage = Math.min(zonePage, zonePageCount - 1);
-  $: pagedZones = selectedZones.slice(zonePage * 8, zonePage * 8 + 8);
   $: adaptive = integrations.adaptive || {};
   $: adaptiveConfig = controller.config?.adaptive || {};
   $: adaptiveLearningZones = adaptive.learning?.zones || {};
@@ -1035,18 +1196,13 @@
 </script>
 
 <main class="touch-shell" style={modeStyle} data-mode={currentModeKey} data-view={activeView}>
-  <Shell {activeView} {socketState} on:view={(event) => activeView = event.detail} />
+  <Shell {activeView} on:view={(event) => activeView = event.detail} />
 
   <RoomPanel
-    {health}
-    {runtime}
-    {system}
     {controller}
     {integrations}
     {selectedRoomName}
-    {selectedSensorName}
     {selectedThermostat}
-    on:refresh={load}
   />
 <section class="control-stack">
     {#if error || alerts.length}
@@ -1057,14 +1213,15 @@
       <ControlView
         {acOptions}
         {selectedAcId}
-        {selectedAcName}
         {selectedStatus}
-        {selectedSettings}
         {selectedThermostat}
         {selectedHistoryEntries}
-        {selectedHistoryPath}
-        {selectedSpillHints}
-        {selectedRuntimeText}
+        selectedHistoryPath={selectedTemperatureChart.historyPath}
+        selectedPlanPath={selectedTemperatureChart.planPath}
+        selectedSetpointPath={selectedTemperatureChart.setpointPath}
+        selectedCallAreaPath={selectedTemperatureChart.callAreaPath}
+        selectedPlanEntries={selectedTemperatureChart.planEntries}
+        selectedCallLabel={selectedTemperatureChart.callLabel}
         {selectedModeOptions}
         {selectedFanOptions}
         {selectedSensorName}
@@ -1072,22 +1229,17 @@
         {activeZoneCount}
         {averageDamper}
         {alerts}
-        {runtime}
-        {zonePage}
-        {zonePageCount}
-        {pagedZones}
         {pendingKey}
         {groupIsOn}
         {groupIsSpill}
         {groupBadges}
         {zoneName}
+        {zoneRoomTemperature}
         on:selectAc={(event) => selectedAcId = event.detail}
         on:power={(event) => setAcPower(event.detail)}
         on:allOff={allOff}
-        on:setpoint={(event) => setAcSetpoint(event.detail)}
         on:mode={(event) => setAcMode(event.detail)}
         on:fan={(event) => setAcFan(event.detail)}
-        on:zonePage={(event) => zonePage = event.detail}
         on:zonePower={(event) => setZonePower(event.detail.id, event.detail.group, event.detail.powerOn)}
         on:zoneSetpoint={(event) => adjustZoneSetpoint(event.detail.id, event.detail.group, event.detail.delta)}
         on:zonePercent={(event) => adjustZonePercent(event.detail.id, event.detail.group, event.detail.delta)}
@@ -1100,6 +1252,7 @@
         {programs}
         {groups}
         {groupEntries}
+        {selectedZones}
         {acEntries}
         {pendingKey}
         {favouriteGroups}
@@ -1130,6 +1283,7 @@
         {adaptiveLearningCount}
         {adaptiveLearningZones}
         {groupEntries}
+        {selectedZones}
         {pendingKey}
         {adaptiveHeadline}
         {adaptiveReason}
@@ -1152,6 +1306,7 @@
         {runtimeMetrics}
         {sensorRows}
         {groupEntries}
+        {selectedGroupEntries}
         {acEntries}
         {balanceRows}
         {rootState}

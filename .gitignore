@@ -2,6 +2,7 @@
 .tmp*/
 tmp/
 logs/
+.codex-runlogs/
 __pycache__/
 *.py[cod]
 .pytest_cache/

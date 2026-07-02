@@ -3,7 +3,6 @@
   import SemanticIcon from "./icons/SemanticIcon.svelte";
 
   export let activeView = "control";
-  export let socketState = "offline";
 
   const dispatch = createEventDispatcher();
   const views = [["control", "Control"], ["favourites", "Favourites"], ["adaptive", "Adaptive"]];
@@ -12,11 +11,7 @@
 
 <header class="topbar">
   <div class="brand">
-    <span class="mark"></span>
-    <div>
-      <span>{socketState === "live" ? "Live" : "Polling"}</span>
-      <h1>OpenAirTouch</h1>
-    </div>
+    <span class="mark"><SemanticIcon name="wind" size={16} /></span>
   </div>
   <nav class="view-tabs" aria-label="Views">
     {#each views as [view, label]}

@@ -1,8 +1,10 @@
 # Svelte Aeros Parity Tasks
 
-Goal: bring the Svelte frontend to feature, content, theme, and layout parity with the Aeros UI worktree while keeping the FastAPI service contract thin and unchanged.
+Goal: build the Svelte frontend as the active product UI while keeping the FastAPI service contract thin and unchanged.
 
 Work boundary: all new UI implementation, parity alignment, and frontend cleanup must happen inside `C:\Users\espar\OneDrive\Documents\OpenAirTouch\.worktrees\svelte-frontend`. The Aeros UI worktree is reference-only and should not be merged now that Svelte is the active UI stack.
+
+Current design direction: do not treat Aeros as the visual target unless explicitly requested for comparison. The Svelte UI should feel like its own AC touchpanel product. Prefer flat controls and telemetry sitting directly on their card/panel backgrounds; avoid adding translucent boxes, borders, tints, or highlighted wrappers around every label/select/readout. Add visual treatment only where it provides a clear interaction affordance or accessibility cue.
 
 ## Source Material
 
@@ -102,6 +104,32 @@ Work boundary: all new UI implementation, parity alignment, and frontend cleanup
 Target worktree: `C:\Users\espar\OneDrive\Documents\OpenAirTouch\.worktrees\svelte-frontend`.
 
 The Aeros worktree is now reference-only. New UI implementation work should happen in Svelte source under `openairtouch/ui/src/App.svelte`, then be built into `openairtouch/src/airtouch4/service/web`.
+
+### Local Service Launch
+
+Use the Svelte worktree as the working directory. The reliable local validation path is to run the launcher in a foreground terminal:
+
+```powershell
+cd C:\Users\espar\OneDrive\Documents\OpenAirTouch\.worktrees\svelte-frontend
+.\openairtouch\scripts\local_service.ps1 -Action run
+```
+
+For Codex/background validation while continuing to work:
+
+```powershell
+.\openairtouch\scripts\local_service.ps1 -Action run -Background -StopExisting
+```
+
+Before starting the service, verify port `8099` and stop any stale local listener:
+
+```powershell
+.\openairtouch\scripts\local_service.ps1 -Action status
+.\openairtouch\scripts\local_service.ps1 -Action stop
+```
+
+After starting, verify `http://127.0.0.1:8099/api/health`, `http://127.0.0.1:8099/api/state`, `/api/events`, and `/ws`. If room temperatures still show whole numbers after decoder changes, restart this local service first; the running Python process keeps the old decoder until it is replaced. Avoid treating a Svelte asset rebuild as a service restart.
+
+The launcher defaults to `--transport tcp_serial --tcp-host 192.168.30.56 --tcp-port 6638 --host 127.0.0.1 --http-port 8099 --protocol auto`. Use `-StopExisting` with `-Action run` only when replacing a known stale local listener. Background launches write `.codex-runlogs/local-service.log`.
 
 ### Phase 1: Desktop Visual Parity
 

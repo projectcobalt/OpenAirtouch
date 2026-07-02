@@ -1,7 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import Subnav from "../components/Subnav.svelte";
-  import ViewHeading from "../components/ViewHeading.svelte";
   import { fanName, modeName } from "../lib/airtouch.js";
   import { tempText } from "../lib/format.js";
 
@@ -11,6 +10,7 @@
   export let programs = {};
   export let groups = {};
   export let groupEntries = [];
+  export let selectedZones = [];
   export let acEntries = [];
   export let pendingKey = "";
   export let favouriteGroups = () => [];
@@ -22,27 +22,34 @@
   export let timeValue = () => "00:00";
 
   const dispatch = createEventDispatcher();
+
+  $: zoneEntries = selectedZones.length ? selectedZones : groupEntries;
+  $: visibleZoneIds = new Set(zoneEntries.map(([groupId]) => Number(groupId)));
+
+  function visibleGroups(groupIds) {
+    return groupIds.map(Number).filter((groupId) => visibleZoneIds.has(groupId));
+  }
 </script>
 
 <section class="cards-view">
-  <ViewHeading title="Favourites" detail={`${Object.keys(favourites).length} saved / ${Object.keys(programs).length} programs`} />
   <Subnav {options} active={activeProgramView} on:change={(event) => dispatch("view", event.detail)} />
 
   {#if activeProgramView === "favourites"}
     <div class="card-grid">
       {#each Object.entries(favourites).sort((a, b) => Number(a[0]) - Number(b[0])) as [id, favourite]}
         {@const selectedGroups = favouriteGroups(favourite)}
+        {@const visibleSelectedGroups = visibleGroups(selectedGroups)}
         <article class="summary-card editor-card" data-favourite-card={id}>
           <div class="card-head">
             <div class="card-title">Favourite {Number(id) + 1}: {favourite.name || "Empty"}</div>
-            <span class:selected-pill={selectedGroups.length}>{selectedGroups.length ? `${selectedGroups.length} Zones` : "No Zones"}</span>
+            <span class:selected-pill={visibleSelectedGroups.length}>{visibleSelectedGroups.length ? `${visibleSelectedGroups.length} Zones` : "No Zones"}</span>
           </div>
-          <div class="readonly-summary">{selectedGroups.length ? selectedGroups.map((groupId) => zoneName(groupId, groups[String(groupId)] || {})).join(", ") : "No Zones Selected"}</div>
+          <div class="readonly-summary">{visibleSelectedGroups.length ? visibleSelectedGroups.map((groupId) => zoneName(groupId, groups[String(groupId)] || {})).join(", ") : "No Zones Selected"}</div>
           <div class="field-grid">
             <label class="field">Name<input data-field="favourite-name" maxlength="8" value={favourite.name || ""} /></label>
           </div>
           <div class="chip-grid">
-            {#each groupEntries as [groupId, group]}
+            {#each zoneEntries as [groupId, group]}
               <label class="check-row">
                 <input type="checkbox" data-favourite-group value={Number(groupId)} checked={selectedGroups.includes(Number(groupId))} />
                 <span>{zoneName(groupId, group)}</span>
@@ -64,6 +71,7 @@
       {#each Object.entries(programs).sort((a, b) => Number(a[0]) - Number(b[0])) as [id, program]}
         {@const programNumber = Number(program.program ?? id)}
         {@const programGroups = groupsFromBitmap(program.groups_1_8_bitmap || 0, program.groups_9_16_bitmap || 0)}
+        {@const visibleProgramGroups = visibleGroups(programGroups)}
         {@const programAcs = groupsFromBitmap(program.active_ac_bitmap || 0, 0)}
         <article class="summary-card editor-card program-card" data-program={programNumber}>
           <div class="card-head">
@@ -71,7 +79,7 @@
             <span class:selected-pill={program.enabled}>{program.enabled ? "Enabled" : "Off"}</span>
           </div>
           <div class="readonly-summary">
-            <span>{programGroups.length ? `${programGroups.length} Zones` : "No Zones"}</span>
+            <span>{visibleProgramGroups.length ? `${visibleProgramGroups.length} Zones` : "No Zones"}</span>
             <span>{programAcs.length ? `${programAcs.length} ACs` : "No AC"}</span>
             <span>On {timeText(program.on_timer)}</span>
             <span>Off {timeText(program.off_timer)}</span>
@@ -96,7 +104,7 @@
           <div class="field-block">
             <span>Zones</span>
             <div class="chip-grid">
-              {#each groupEntries as [groupId, group]}
+              {#each zoneEntries as [groupId, group]}
                 {@const spill = groupIsSpill(group)}
                 {#if !spill || programGroups.includes(Number(groupId))}
                   <label class="check-row" class:muted={spill}>

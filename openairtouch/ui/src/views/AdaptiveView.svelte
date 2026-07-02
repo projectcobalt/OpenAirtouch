@@ -14,6 +14,7 @@
   export let adaptiveLearningCount = 0;
   export let adaptiveLearningZones = {};
   export let groupEntries = [];
+  export let selectedZones = [];
   export let pendingKey = "";
   export let adaptiveHeadline = () => "Adaptive";
   export let adaptiveReason = () => "";
@@ -25,6 +26,8 @@
   export let onView = () => {};
   export let onSaveConfig = () => {};
   export let onModelAction = () => {};
+
+  $: zoneEntries = selectedZones.length ? selectedZones : groupEntries.filter(([_id, group]) => !groupIsSpill(group));
 </script>
 
 <section class="cards-view">
@@ -93,7 +96,7 @@
       <article class="summary-card editor-card adaptive-config-card">
         <div class="card-title">Control Zones</div>
         <div class="chip-grid">
-          {#each groupEntries.filter(([_id, group]) => !groupIsSpill(group)) as [id, group]}
+          {#each zoneEntries as [id, group]}
             <label class="check-row"><input type="checkbox" data-adaptive-control-zone value={Number(id)} checked={(adaptiveConfig.control_zones || []).map(Number).includes(Number(id))} /><span>{zoneName(id, group)}</span></label>
           {/each}
         </div>
@@ -102,7 +105,7 @@
         <div class="card-title">Outside Air Zones</div>
         <div class="hero-detail">Fresh-air actuator selection lives here, not in spill configuration.</div>
         <div class="chip-grid">
-          {#each groupEntries.filter(([_id, group]) => !groupIsSpill(group)) as [id, group]}
+          {#each zoneEntries as [id, group]}
             <label class="check-row"><input type="checkbox" data-adaptive-outside-air-zone value={Number(id)} checked={(adaptiveConfig.outside_air_zones || []).map(Number).includes(Number(id))} /><span>{zoneName(id, group)}</span></label>
           {/each}
         </div>
@@ -124,7 +127,7 @@
     </div>
   {:else}
     <div class="analytics-list">
-      {#each groupEntries.filter(([_id, group]) => !groupIsSpill(group)) as [id, group]}
+      {#each zoneEntries as [id, group]}
         {@const learningZone = adaptiveLearningZones[String(id)] || {}}
         <article class="summary-card analytics-row" class:ready={learningZone.mpc_ready} class:learning={learningZone.learn}>
           <div class="analytics-row-status">

@@ -162,7 +162,7 @@ def _append_weather_recommendations(name: str, opportunity: dict[str, Any], stat
     if not opportunity["outside_favourable"]:
         return
     status["recommendations"].append(
-        f"{name}: Outside {opportunity['outside_rounded']} C Is Favourable Versus Setpoint {opportunity['setpoint']} C"
+        f"{name}: Outside {opportunity['outside_rounded']}° Is Favourable Versus Setpoint {opportunity['setpoint']}°"
     )
     if opportunity["open_windows_intent"]:
         status["recommendations"].append(f"{name}: Open Windows Recommended: Outside Air Can Carry The Load")

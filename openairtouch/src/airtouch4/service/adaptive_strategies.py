@@ -72,7 +72,7 @@ class AdaptiveStrategyMixin:
         if proposal is not None:
             if proposal.source in {"mpc", "zone"}:
                 status["recommendations"].append(
-                    f"{name}: Recommended Target: {proposal.target} C "
+                    f"{name}: Recommended Target: {proposal.target}° "
                     f"(Confidence {round(proposal.confidence * 100)}%, Action {_title_text(proposal.action)})"
                 )
                 if hybrid_status is not None and hybrid_status["damper_percentages"]:
@@ -263,7 +263,7 @@ class AdaptiveStrategyMixin:
             spec = self._set_ac_setpoint(state, ac_id, target, status, now)
             if spec is not None:
                 specs.append(spec)
-                status["actions"].append(f"{name}: Setpoint Changed: {target} C")
+                status["actions"].append(f"{name}: Setpoint Changed: {target}°")
         else:
             specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
         for group_id, group in groups:
@@ -278,7 +278,7 @@ class AdaptiveStrategyMixin:
                 spec = self._set_group_setpoint(state, group_id, target, status, now)
                 if spec is not None:
                     specs.append(spec)
-                    status["actions"].append(f"{_group_name(group_id, group)}: Setpoint Changed: {target} C")
+                    status["actions"].append(f"{_group_name(group_id, group)}: Setpoint Changed: {target}°")
             else:
                 specs.extend(self._restore_group_setpoint(state, group_id, status, now))
         return specs
@@ -370,7 +370,7 @@ class AdaptiveStrategyMixin:
             spec = self._set_ac_setpoint(state, ac_id, target, status, now)
             if spec is not None:
                 specs.append(spec)
-                status["actions"].append(f"{name}: Setpoint Changed: {target} C")
+                status["actions"].append(f"{name}: Setpoint Changed: {target}°")
         else:
             specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
 
@@ -383,7 +383,7 @@ class AdaptiveStrategyMixin:
             if temp_spec is not None:
                 specs.append(temp_spec)
                 commanded_temp = int(round(control_temperature))
-                status["actions"].append(f"{name}: Control Temperature Updated: {commanded_temp} C")
+                status["actions"].append(f"{name}: Control Temperature Updated: {commanded_temp}°")
             status["evaluations"][-1]["hybrid"]["touchpad_temperature_commanded"] = temp_spec is not None
             status["evaluations"][-1]["hybrid"]["touchpad_temperature"] = int(round(control_temperature))
             status["evaluations"][-1]["hybrid"]["touchpad_sensor"] = TOUCHPAD_2_SENSOR

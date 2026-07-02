@@ -31,15 +31,15 @@ def signed_hex(byte: int) -> str:
     return f"0x{byte & 0xFF:02X}"
 
 
-def parse_internal_temperature(byte: int) -> int | None:
+def parse_internal_temperature(byte: int) -> float | None:
     """Decode one-byte temperatures used in internal touchpanel frames."""
     if byte == 0xFF:
         return None
     if byte < 40:
-        return byte - 25
+        return float(byte - 25)
     if byte < 231:
-        return int((byte + 110) / 10)
-    return byte - 197
+        return round((byte + 110) / 10, 1)
+    return float(byte - 197)
 
 
 def encode_internal_temperature(temperature: float) -> int:

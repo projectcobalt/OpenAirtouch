@@ -3,18 +3,20 @@
   import AcHero from "../components/AcHero.svelte";
   import MetricCard from "../components/MetricCard.svelte";
   import ZoneCard from "../components/ZoneCard.svelte";
+  import SemanticIcon from "../components/icons/SemanticIcon.svelte";
   import { percentText, tempText } from "../lib/format.js";
 
   export let acOptions = [];
   export let selectedAcId = 0;
-  export let selectedAcName = "";
   export let selectedStatus = {};
-  export let selectedSettings = {};
   export let selectedThermostat = {};
   export let selectedHistoryEntries = [];
   export let selectedHistoryPath = "";
-  export let selectedSpillHints = [];
-  export let selectedRuntimeText = "-";
+  export let selectedPlanEntries = [];
+  export let selectedPlanPath = "";
+  export let selectedSetpointPath = "";
+  export let selectedCallAreaPath = "";
+  export let selectedCallLabel = "";
   export let selectedModeOptions = [];
   export let selectedFanOptions = [];
   export let selectedSensorName = "-";
@@ -22,15 +24,12 @@
   export let activeZoneCount = 0;
   export let averageDamper = null;
   export let alerts = [];
-  export let runtime = {};
-  export let zonePage = 0;
-  export let zonePageCount = 1;
-  export let pagedZones = [];
   export let pendingKey = "";
   export let groupIsOn = () => false;
   export let groupIsSpill = () => false;
   export let groupBadges = () => [];
   export let zoneName = (id) => `Zone ${Number(id) + 1}`;
+  export let zoneRoomTemperature = (_id, group) => group?.status?.temperature;
 
   const dispatch = createEventDispatcher();
 </script>
@@ -39,21 +38,21 @@
   <AcHero
     {acOptions}
     {selectedAcId}
-    {selectedAcName}
     {selectedStatus}
-    {selectedSettings}
     {selectedThermostat}
     {selectedHistoryEntries}
     {selectedHistoryPath}
-    {selectedSpillHints}
+    {selectedPlanEntries}
+    {selectedPlanPath}
+    {selectedSetpointPath}
+    {selectedCallAreaPath}
+    {selectedCallLabel}
     {pendingKey}
-    runtimeText={selectedRuntimeText}
     modeOptions={selectedModeOptions}
     fanOptions={selectedFanOptions}
     on:selectAc={(event) => dispatch("selectAc", event.detail)}
     on:power={(event) => dispatch("power", event.detail)}
     on:allOff={() => dispatch("allOff")}
-    on:setpoint={(event) => dispatch("setpoint", event.detail)}
     on:mode={(event) => dispatch("mode", event.detail)}
     on:fan={(event) => dispatch("fan", event.detail)}
   />
@@ -67,25 +66,13 @@
 </section>
 
 <section class="zones-section">
-  <div class="zone-heading">
-    <div>
-      <span>Zones</span>
-      <strong>{activeZoneCount} / {selectedZones.length}</strong>
+  {#if selectedZones.length > 8}
+    <div class="zone-scroll-hint" aria-hidden="true">
+      <SemanticIcon name="arrowsHorizontal" size={18} />
     </div>
-    <div class="zone-pages">
-      {#if zonePageCount > 1}
-        {#each Array(zonePageCount) as _, index}
-          <button type="button" class:active={zonePage === index} on:click={() => dispatch("zonePage", index)}>
-            {(index * 8) + 1}-{Math.min((index + 1) * 8, selectedZones.length)}
-          </button>
-        {/each}
-      {/if}
-      <span>{runtime.rx_count || 0} RX / {runtime.tx_count || 0} TX</span>
-    </div>
-  </div>
-
-  <div class="zone-grid">
-    {#each pagedZones as [id, group]}
+  {/if}
+  <div class="zone-grid" class:scrollable={selectedZones.length > 8}>
+    {#each selectedZones as [id, group]}
       <ZoneCard
         {id}
         {group}
@@ -94,6 +81,7 @@
         spill={groupIsSpill(group)}
         badges={groupBadges(group)}
         name={zoneName(id, group)}
+        roomTemperature={zoneRoomTemperature(id, group)}
         on:power={(event) => dispatch("zonePower", event.detail)}
         on:setpoint={(event) => dispatch("zoneSetpoint", event.detail)}
         on:percent={(event) => dispatch("zonePercent", event.detail)}

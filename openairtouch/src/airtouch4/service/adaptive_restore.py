@@ -151,12 +151,12 @@ class AdaptiveRestoreMixin:
             if "mode" in original:
                 return f"{_ac_name(ac_id or 0, ac or {})}: Restored Mode: {_mode_name(_optional_int(original.get('mode')))}"
             if "setpoint" in original:
-                return f"{_ac_name(ac_id or 0, ac or {})}: Restored Setpoint: {original['setpoint']} C"
+                return f"{_ac_name(ac_id or 0, ac or {})}: Restored Setpoint: {original['setpoint']}°"
             return f"{_ac_name(ac_id or 0, ac or {})}: Restored AC State"
         group_id = _optional_int(original.get("group")) or 0
         group = _group_for_id(state, group_id)
         if action == "group_setpoint":
-            return f"{_group_name(group_id, group)}: Restored Setpoint: {original['setpoint']} C"
+            return f"{_group_name(group_id, group)}: Restored Setpoint: {original['setpoint']}°"
         if action == "group_percentage":
             return f"{_group_name(group_id, group)}: Restored Damper: {original['percentage']}%"
         if action == "ac_setting_new":

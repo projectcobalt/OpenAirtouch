@@ -132,7 +132,7 @@ def _weather_intent(base: dict[str, Any], opportunity: dict[str, Any], mode: str
     if opportunity.get("recommend_off"):
         intent = "turn_off" if mode == "adaptive" else "ventilate"
         headline = "Weather Can Carry Load" if mode == "adaptive" else "Open Windows Recommended"
-        summary = f"Outside {outside} C Is Favourable Versus Setpoint {setpoint} C."
+        summary = f"Outside {outside}° Is Favourable Versus Setpoint {setpoint}°."
     elif opportunity.get("outside_favourable"):
         intent = "hold"
         headline = "Outside Air Is Favourable"
@@ -166,7 +166,7 @@ def _forecast_intent(base: dict[str, Any], mpc: dict[str, Any], evaluation: dict
     intent = {"heating": "heat", "cooling": "cool", "idle": "hold"}.get(action, "monitor")
     headline = {"heating": "Heating Expected", "cooling": "Cooling Expected", "idle": "Holding Target"}.get(action, "Forecast Ready")
     target = mpc.get("target", base.get("recommended_target"))
-    summary_parts = [f"Recommended Target: {target} C"]
+    summary_parts = [f"Recommended Target: {target}°"]
     runtime_hours = base.get("runtime_hours")
     if isinstance(runtime_hours, (int, float)):
         summary_parts.append(f"Expected Runtime: {runtime_hours:.1f} H")

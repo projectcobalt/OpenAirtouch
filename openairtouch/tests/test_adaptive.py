@@ -309,7 +309,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
         self.assertEqual(specs[1].payload.hex(" ").upper(), "00 87 12 00")
         self.assertEqual(controller.status()["evaluations"][0]["target"], 22)
-        self.assertEqual(controller.status()["actions"], ["Home: Mode Changed: Heat", "Home: Setpoint Changed: 22 C"])
+        self.assertEqual(controller.status()["actions"], ["Home: Mode Changed: Heat", "Home: Setpoint Changed: 22°"])
 
     def test_restore_state_records_only_when_target_differs_and_persists(self) -> None:
         unchanged_controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,)))
@@ -441,9 +441,9 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertEqual(controller.status()["evaluations"][0]["mpc"]["source"], "zone")
         self.assertIn("projected_runtime_hours", controller.status()["evaluations"][0]["mpc"])
         status = controller.status()
-        self.assertIn("Recommended Target: 22 C", " ".join(status["recommendations"]))
+        self.assertIn("Recommended Target: 22°", " ".join(status["recommendations"]))
         self.assertEqual(status["intents"][0]["headline"], "Heating Expected")
-        self.assertEqual(status["intents"][0]["summary"], "Recommended Target: 22 C / Expected Runtime: 0.6 H")
+        self.assertEqual(status["intents"][0]["summary"], "Recommended Target: 22° / Expected Runtime: 0.6 H")
 
     def test_weather_strategy_reports_open_windows_intent_without_setpoint_target(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="recommend", control_strategy="weather", command_cooldown=1))
@@ -524,7 +524,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertFalse(evaluation["hybrid"]["touchpad_temperature_commanded"])
         status = controller.status()
         self.assertIn("Damper Plan: Zone 1 100%", " / ".join(status["recommendations"]))
-        self.assertEqual(status["intents"][0]["summary"], "Recommended Target: 22 C / Expected Runtime: 0.6 H / Damper Plan: Zone 1 100%")
+        self.assertEqual(status["intents"][0]["summary"], "Recommended Target: 22° / Expected Runtime: 0.6 H / Damper Plan: Zone 1 100%")
 
     def test_recommend_mode_reports_hybrid_shadow_while_models_warm(self) -> None:
         controller = AdaptiveController(
