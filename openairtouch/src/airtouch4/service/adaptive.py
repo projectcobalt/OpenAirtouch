@@ -11,7 +11,7 @@ from .commands import CommandRequestError, build_transaction
 from .adaptive_airtouch import translate_airtouch_snapshot
 from .adaptive_intent import _intent_status, _mode_intent_status
 from .adaptive_mpc import AdaptiveMpcEngine, MpcInputs
-from .adaptive_model import AdaptiveDevice
+from .adaptive_model import AdaptiveDevice, AdaptiveRoom
 from .adaptive_restore import AdaptiveRestoreMixin
 from .adaptive_strategies import AdaptiveStrategyMixin
 from .adaptive_signals import (
@@ -367,24 +367,16 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
                 for room in device.rooms
                 if room.active and room.temperature is not None and room.setpoint is not None
             ]
-        demand: list[tuple[str, float]] = []
-        for room in candidates:
-            assert room.temperature is not None
-            assert room.setpoint is not None
-            delta = float(room.temperature) - float(room.setpoint)
-            if delta >= 0.5:
-                demand.append(("cool", delta))
-            elif delta <= -0.5:
-                demand.append(("heat", abs(delta)))
         outside_air_intent = climate.co2_ppm is not None and climate.co2_ppm >= self.config.co2_ventilation_threshold_ppm
         ventilation_reason = "co2_high" if outside_air_intent else None
-        if demand:
-            mode_name, _score = max(demand, key=lambda item: item[1])
+        demand = self._thermal_mode_demand(candidates, current_mode)
+        if demand is not None:
+            mode_name, _score, reason = demand
             mode = 4 if mode_name == "cool" else 1
             return AcModeIntent(
                 mode=mode,
                 name=_mode_name(mode),
-                reason="room_above_setpoint" if mode == 4 else "room_below_setpoint",
+                reason=reason,
                 source="zone_temperature",
                 current_mode=current_mode,
                 outside_air_intent=outside_air_intent,
@@ -423,6 +415,38 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
             outside_air_intent=outside_air_intent,
             ventilation_reason=ventilation_reason,
         )
+
+    def _thermal_mode_demand(self, rooms: list[AdaptiveRoom], current_mode: int | None) -> tuple[str, float, str] | None:
+        demands: list[tuple[str, float, str]] = []
+        for room in rooms:
+            if room.temperature is None or room.setpoint is None:
+                continue
+            temperature = float(room.temperature)
+            setpoint = float(room.setpoint)
+            if current_mode == 1:
+                heat_delta = setpoint - temperature
+                cool_delta = temperature - float(self.config.cool_comfort_temp)
+                if heat_delta >= 0.5:
+                    demands.append(("heat", heat_delta, "room_below_heat_setpoint"))
+                elif cool_delta >= 0.5:
+                    demands.append(("cool", cool_delta, "room_above_cool_comfort"))
+            elif current_mode == 4:
+                cool_delta = temperature - setpoint
+                heat_delta = float(self.config.heat_comfort_temp) - temperature
+                if cool_delta >= 0.5:
+                    demands.append(("cool", cool_delta, "room_above_cool_setpoint"))
+                elif heat_delta >= 0.5:
+                    demands.append(("heat", heat_delta, "room_below_heat_comfort"))
+            else:
+                cool_delta = temperature - setpoint
+                heat_delta = setpoint - temperature
+                if cool_delta >= 0.5:
+                    demands.append(("cool", cool_delta, "room_above_cool_setpoint"))
+                elif heat_delta >= 0.5:
+                    demands.append(("heat", heat_delta, "room_below_heat_setpoint"))
+        if not demands:
+            return None
+        return max(demands, key=lambda item: item[1])
 
     def _control_target(self, device: AdaptiveDevice, ac: dict[str, Any], outside: float, weather: WeatherSignal, climate: ClimateSignal, cooling: bool) -> int:
         if self.config.control_strategy in {"zone", "hybrid"}:

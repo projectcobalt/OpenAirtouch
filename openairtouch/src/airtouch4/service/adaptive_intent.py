@@ -154,11 +154,12 @@ def _weather_intent(base: dict[str, Any], opportunity: dict[str, Any], mode: str
 def _forecast_intent(base: dict[str, Any], mpc: dict[str, Any], evaluation: dict[str, Any]) -> dict[str, Any]:
     source = str(mpc.get("source") or "")
     if source == "learning":
+        summary = _learning_summary(mpc)
         return {
             **base,
             "intent": "learning",
             "headline": "Model Learning",
-            "summary": "Waiting For More Samples Before Control.",
+            "summary": summary,
             "reason": mpc.get("reason"),
         }
     action = str(mpc.get("action") or "idle")
@@ -195,6 +196,29 @@ def _zone_plan_text(values: Any, label: str) -> str:
     if not labels:
         return ""
     return f"{label}: {', '.join(labels)}"
+
+
+def _learning_summary(mpc: dict[str, Any]) -> str:
+    action = _learning_action(mpc)
+    if action == "cooling":
+        return "Cooling Model Warming Up."
+    if action == "heating":
+        return "Heating Model Warming Up."
+    if action == "idle":
+        return "Thermal Model Warming Up."
+    return "Waiting For More Samples Before Control."
+
+
+def _learning_action(mpc: dict[str, Any]) -> str | None:
+    runtime = mpc.get("runtime_forecast") if isinstance(mpc, dict) else None
+    windows = runtime.get("action_windows") if isinstance(runtime, dict) else None
+    if windows:
+        first = windows[0]
+        action = first.get("action") if isinstance(first, dict) else None
+        if isinstance(action, str) and action:
+            return action
+    action = mpc.get("action") if isinstance(mpc, dict) else None
+    return action if isinstance(action, str) and action else None
 
 
 def _zone_labels(values: Any) -> list[str]:

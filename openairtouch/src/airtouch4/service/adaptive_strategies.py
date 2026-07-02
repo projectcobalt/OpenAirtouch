@@ -82,7 +82,7 @@ class AdaptiveStrategyMixin:
                     )
                     status["recommendations"].append(f"{name}: Damper Plan: {damper_text}")
             elif proposal.source == "learning":
-                status["recommendations"].append(f"{name}: Model Learning: Waiting For Selected Control Zones")
+                status["recommendations"].append(f"{name}: {_learning_recommendation(proposal)}")
 
     def _weather_action(
         self,
@@ -487,6 +487,28 @@ def _percent_to_fraction(value: int) -> float:
 
 def _strategy_uses_mpc(control_strategy: str) -> bool:
     return control_strategy in {"zone", "hybrid"}
+
+
+def _learning_recommendation(proposal: Any) -> str:
+    action = _proposal_learning_action(proposal)
+    if action == "cooling":
+        return "Cooling Model Warming Up"
+    if action == "heating":
+        return "Heating Model Warming Up"
+    if action == "idle":
+        return "Thermal Model Warming Up"
+    return "Model Learning: Waiting For More Samples"
+
+
+def _proposal_learning_action(proposal: Any) -> str | None:
+    forecast = getattr(proposal, "runtime_forecast", None)
+    windows = getattr(forecast, "action_windows", None)
+    if windows:
+        action = windows[0].get("action") if isinstance(windows[0], dict) else None
+        if isinstance(action, str) and action:
+            return action
+    action = getattr(proposal, "action", None)
+    return action if isinstance(action, str) and action else None
 
 
 def _clamp_setpoint(target: int, ac: dict[str, Any]) -> int:
