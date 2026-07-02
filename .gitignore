@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 node_modules/
+.pnpm-store/
 openairtouch/.local/
 openairtouch/ui/node_modules/
 

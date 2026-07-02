@@ -2,6 +2,8 @@
 
 Goal: bring the Svelte frontend to feature, content, theme, and layout parity with the Aeros UI worktree while keeping the FastAPI service contract thin and unchanged.
 
+Work boundary: all new UI implementation, parity alignment, and frontend cleanup must happen inside `C:\Users\espar\OneDrive\Documents\OpenAirTouch\.worktrees\svelte-frontend`. The Aeros UI worktree is reference-only and should not be merged now that Svelte is the active UI stack.
+
 ## Source Material
 
 - `../src/airtouch4/service/ui.py` in the Aeros worktree is the current parity baseline.
