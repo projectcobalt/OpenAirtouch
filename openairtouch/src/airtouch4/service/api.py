@@ -4,20 +4,25 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from .commands import CommandRequestError, build_transaction
 from .controller import RuntimeController
 from .ui import INDEX_HTML
 
+ASSETS_DIR = Path(__file__).with_name("assets")
+WEB_DIR = Path(__file__).with_name("web")
+WEB_INDEX = WEB_DIR / "index.html"
 WEBSOCKET_PING_INTERVAL = 15.0
 WEBSOCKET_COALESCE_DELAY = 0.1
 
 try:
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.responses import HTMLResponse
+    from fastapi.staticfiles import StaticFiles
 except ModuleNotFoundError:  # pragma: no cover - import guard
-    FastAPI = HTTPException = WebSocket = WebSocketDisconnect = HTMLResponse = None  # type: ignore[assignment]
+    FastAPI = HTTPException = WebSocket = WebSocketDisconnect = HTMLResponse = StaticFiles = None  # type: ignore[assignment]
 
 
 def create_app(controller: RuntimeController):
@@ -33,6 +38,10 @@ def create_app(controller: RuntimeController):
             controller.stop()
 
     app = FastAPI(title="OpenAirTouch", version="0.6.3", lifespan=lifespan)
+    if StaticFiles is not None and ASSETS_DIR.exists():
+        app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+    if StaticFiles is not None and WEB_DIR.exists():
+        app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -40,6 +49,8 @@ def create_app(controller: RuntimeController):
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
+        if WEB_INDEX.exists():
+            return WEB_INDEX.read_text(encoding="utf-8")
         return INDEX_HTML
 
     @app.get("/api/state")

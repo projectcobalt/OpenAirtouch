@@ -5,6 +5,9 @@ logs/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+node_modules/
+openairtouch/.local/
+openairtouch/ui/node_modules/
 
 # Build output
 *.egg-info/

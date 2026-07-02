@@ -12,7 +12,7 @@ from typing import Any
 import uvicorn
 import websockets
 
-from airtouch4.service.api import create_app
+from airtouch4.service.api import WEB_DIR, create_app
 
 
 class FakeController:
@@ -94,6 +94,14 @@ class ServiceApiTests(unittest.TestCase):
 
         self.assertEqual(controller.started, 1)
         self.assertEqual(controller.stopped, 1)
+
+    def test_static_asset_routes_are_mounted(self) -> None:
+        app = create_app(FakeController())
+        paths = {route.path for route in app.routes}
+
+        self.assertIn("/assets", paths)
+        if WEB_DIR.exists():
+            self.assertIn("/ui", paths)
 
     def test_websocket_sends_initial_state_then_batched_events_and_state(self) -> None:
         controller = FakeController()
