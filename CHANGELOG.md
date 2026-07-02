@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3 - 2026-07-02
+
+- Make adaptive heat/cool mode switching use comfort-band guards so satisfied rooms do not immediately call the opposite mode.
+- Clarify adaptive model warm-up messages by reporting heating, cooling, or thermal model warm-up instead of implying selected zones are missing.
+
 ## 0.6.2 - 2026-07-02
 
 - Add a zone tile control to resume sensor temperature control from damper mode without turning the zone off and back on.
