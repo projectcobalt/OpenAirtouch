@@ -2,7 +2,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  base: "/ui/",
+  base: "./",
   plugins: [svelte()],
   build: {
     outDir: "../src/airtouch4/service/web",

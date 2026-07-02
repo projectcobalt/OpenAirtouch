@@ -1,4 +1,5 @@
 import { MODE_THEMES } from "./airtouch.js";
+import { assetPath } from "./client.js";
 
 export const APP_TOKENS = {
   radiusCard: "22px",
@@ -13,7 +14,7 @@ export function modeThemeFor(modeKey = "auto") {
 export function modeStyleFor(modeKey = "auto") {
   const theme = modeThemeFor(modeKey);
   return [
-    `--mode-bg: url("/assets/mode-backgrounds/${modeKey}.png")`,
+    `--mode-bg: url("${assetPath(`mode-backgrounds/${modeKey}.png`)}")`,
     `--mode-accent: ${theme.accent}`,
     `--mode-accent-soft: ${theme.accentSoft}`,
     `--mode-panel-tint: ${theme.tint}`,

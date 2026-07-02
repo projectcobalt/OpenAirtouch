@@ -1,6 +1,22 @@
-export const apiPath = (path) => `/api/${path}`;
+function serviceBasePath() {
+  const path = window.location.pathname;
+  const normalized = path.endsWith("/") ? path : `${path}/`;
+  return normalized.replace(/\/ui\/$/, "/");
+}
 
-export const wsPath = () => `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
+export function servicePath(path) {
+  const base = `${window.location.origin}${serviceBasePath()}`;
+  return new URL(path, base).pathname;
+}
+
+export const apiPath = (path) => servicePath(`api/${path}`);
+
+export const assetPath = (path) => servicePath(`assets/${path}`);
+
+export const wsPath = () => {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${servicePath("ws")}`;
+};
 
 export async function fetchJson(path) {
   const response = await fetch(apiPath(path));

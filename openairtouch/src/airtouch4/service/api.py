@@ -14,6 +14,7 @@ from .ui import INDEX_HTML
 ASSETS_DIR = Path(__file__).with_name("assets")
 WEB_DIR = Path(__file__).with_name("web")
 WEB_INDEX = WEB_DIR / "index.html"
+WEB_ASSETS_DIR = WEB_DIR / "ui-assets"
 WEBSOCKET_PING_INTERVAL = 15.0
 WEBSOCKET_COALESCE_DELAY = 0.1
 
@@ -37,9 +38,11 @@ def create_app(controller: RuntimeController):
         finally:
             controller.stop()
 
-    app = FastAPI(title="OpenAirTouch", version="0.7.0", lifespan=lifespan)
+    app = FastAPI(title="OpenAirTouch", version="0.7.1", lifespan=lifespan)
     if StaticFiles is not None and ASSETS_DIR.exists():
         app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+    if StaticFiles is not None and WEB_ASSETS_DIR.exists():
+        app.mount("/ui-assets", StaticFiles(directory=WEB_ASSETS_DIR), name="ui-assets")
     if StaticFiles is not None and WEB_DIR.exists():
         app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
