@@ -20,6 +20,7 @@ from ..session.queue import TransactionSpec
 from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, TcpSerialTransport
 from .adaptive import AdaptiveConfig, AdaptiveController
 from .error_resolver import RemoteErrorResolver, RemoteErrorResolverConfig
+from .event_text import describe_event
 from .ha_client import HomeAssistantApiClient, HomeAssistantApiConfig
 
 TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
@@ -306,14 +307,18 @@ class RuntimeController:
 
     def _record_controller_error(self, exc: Exception) -> None:
         message = f"{type(exc).__name__}: {exc}"
+        record = {
+            "event": "controller",
+            "message": message,
+            "state_changed": False,
+        }
+        plain = describe_event(record)
+        record["plain"] = plain
+        record["summary"] = plain["text"]
         with self._lock:
             self._status = "reconnecting"
             self._error = message
-            self._events.append({
-                "event": "controller",
-                "message": message,
-                "state_changed": False,
-            })
+            self._events.append(record)
             self._mark_changed_locked()
 
     def _poll_weather(self) -> None:
@@ -514,6 +519,9 @@ def _event_record(event: RuntimeEvent) -> dict[str, Any]:
         })
     if event.transaction is not None:
         record["transaction"] = event.transaction.to_record()
+    plain = describe_event(record)
+    record["plain"] = plain
+    record["summary"] = plain["text"]
     return record
 
 

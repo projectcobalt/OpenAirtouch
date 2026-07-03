@@ -282,6 +282,11 @@ class RuntimeControllerTests(unittest.TestCase):
         controller._record_controller_error(TimeoutError("bridge unavailable"))
 
         self.assertGreater(controller.wait_for_change(version, timeout=0.01), version)
+        event = controller.recent_events()[-1]
+        self.assertEqual(event["plain"]["category"], "controller")
+        self.assertEqual(event["plain"]["category_label"], "Controller")
+        self.assertEqual(event["plain"]["severity"], "warning")
+        self.assertIn("Bridge Unavailable", event["summary"])
 
     def test_tx_event_record_uses_wire_crc(self) -> None:
         packet = AirTouchPacket(
@@ -300,6 +305,107 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertTrue(record["crc_ok"])
         self.assertEqual(record["src"], "0x91")
         self.assertEqual(record["cmd"], "0x26")
+        self.assertIn("summary", record)
+
+    def test_event_record_adds_plain_english_ac_status(self) -> None:
+        packet = AirTouchPacket(
+            dest=0x90,
+            src=0x80,
+            packet_id=0x01,
+            command=0x23,
+            payload=b"",
+            raw_mode=True,
+        )
+        event = RuntimeEvent(
+            "rx",
+            packet=packet,
+            decoded={
+                "type": "ac_status_internal",
+                "records": [{
+                    "ac": 0,
+                    "available": True,
+                    "power_on": True,
+                    "mode": 4,
+                    "fan": 2,
+                    "setpoint": 24,
+                    "sensor_temp": 25.5,
+                    "error_code": 0,
+                }],
+            },
+            state_changed=True,
+        )
+
+        record = _event_record(event)
+
+        self.assertEqual(record["plain"]["category"], "ac_status")
+        self.assertEqual(record["plain"]["category_label"], "AC Status")
+        self.assertIn("AC 1", record["summary"])
+        self.assertIn("Cool", record["summary"])
+        self.assertIn("Setpoint 24 C", record["summary"])
+
+    def test_event_record_adds_plain_english_zone_command(self) -> None:
+        packet = AirTouchPacket(
+            dest=0x80,
+            src=0x91,
+            packet_id=0x22,
+            command=0x20,
+            payload=bytes.fromhex("42 55"),
+            raw_mode=True,
+        )
+        event = RuntimeEvent(
+            "tx",
+            packet=packet,
+            wire=packet.encode(stuff_raw=True),
+            decoded={
+                "type": "set_group_status_internal",
+                "group": 2,
+                "power_name": "value_change",
+                "sensor_control": False,
+                "percentage": 85,
+            },
+            state_changed=True,
+        )
+
+        record = _event_record(event)
+
+        self.assertEqual(record["plain"]["category"], "zone_command")
+        self.assertEqual(record["plain"]["category_label"], "Zone Command")
+        self.assertIn("Set Zone 3", record["summary"])
+        self.assertIn("Open 85%", record["summary"])
+
+    def test_event_record_adds_plain_english_sensor_info_records(self) -> None:
+        packet = AirTouchPacket(
+            dest=0x9F,
+            src=0x80,
+            packet_id=0x11,
+            command=0x73,
+            payload=b"",
+            raw_mode=True,
+        )
+        event = RuntimeEvent(
+            "rx",
+            packet=packet,
+            decoded={
+                "type": "sensor_info",
+                "records": [{
+                    "sensor": 0,
+                    "kind": "rf",
+                    "temperature": 25.7,
+                    "battery": 100,
+                    "signal": -80,
+                    "status": "ok",
+                }],
+            },
+            state_changed=True,
+        )
+
+        record = _event_record(event)
+
+        self.assertEqual(record["plain"]["category"], "sensor")
+        self.assertEqual(record["plain"]["category_label"], "Sensor")
+        self.assertIn("Sensor 0x00", record["summary"])
+        self.assertIn("25.7 C", record["summary"])
+        self.assertIn("Battery 100%", record["summary"])
 
 
 if __name__ == "__main__":
