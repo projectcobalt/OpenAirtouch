@@ -25,7 +25,6 @@
     parametersPayload,
     preferencePayload,
     programPayload,
-    resetTempOffsetInputs,
     sensorTemperaturePayload,
     servicePayload,
     spillPayload,
@@ -38,7 +37,6 @@
   import { clamp, finite, percentText, tempText, title } from "./lib/format.js";
   import {
     acName as selectAcName,
-    activeRoomName as selectActiveRoomName,
     activeZoneEntriesForAc as selectActiveZoneEntriesForAc,
     average as selectAverage,
     configuredAcEntries as selectConfiguredAcEntries,
@@ -51,6 +49,7 @@
     groupIsOn as selectGroupIsOn,
     groupIsSpill as selectGroupIsSpill,
     groupsFromBitmap as selectGroupsFromBitmap,
+    mainDisplayRoomName as selectMainDisplayRoomName,
     sensorKindLabel as selectSensorKindLabel,
     sensorRowsFromState as selectSensorRowsFromState,
     splitGroupBitmap as selectSplitGroupBitmap,
@@ -79,10 +78,12 @@
   let socket = null;
   let reconnectTimer = null;
   let pollTimer = null;
+  let themeMediaQuery = null;
+  let themeMediaHandler = null;
 
   const PROGRAM_VIEWS = [["favourites", "Favourites"], ["programs", "Programs"], ["timers", "AC Timer"]];
   const ADAPTIVE_VIEWS = [["status", "Status"], ["config", "Config"], ["analytics", "Analytics"]];
-  const BASE_SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["general", "General"], ["service", "Service"]];
+  const BASE_SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["service", "Service"]];
   const SUPPORT_SERVICE_VIEW = ["diagnostics", "Support"];
 
   async function load() {
@@ -254,12 +255,12 @@
     return selectFirstSensorName(zones);
   }
 
-  function activeRoomName(zones) {
-    return selectActiveRoomName(zones);
+  function mainDisplayRoomName(ac, acId, zones) {
+    return selectMainDisplayRoomName(system, ac, acId, zones);
   }
 
   function thermostatFor(ac, zones) {
-    return selectThermostatFor(ac, zones);
+    return selectThermostatFor(ac, zones, integrations);
   }
 
   function acSourceHint(ac, zones, thermostat) {
@@ -578,6 +579,14 @@
   }
 
   async function sendAdaptiveModelAction(action, zone = undefined) {
+    if (action === "reset_all" || action === "reset_zone") {
+      const confirmed = await confirmAction({
+        title: action === "reset_all" ? "Reset Adaptive Models" : "Reset Zone Model",
+        message: action === "reset_all" ? "This clears all adaptive learning data and restarts model learning." : "This clears adaptive learning data for this zone and restarts model learning.",
+        confirmLabel: "Reset"
+      });
+      if (!confirmed) return;
+    }
     pendingKey = `adaptive-model-${action}-${zone ?? "all"}`;
     error = "";
     try {
@@ -679,14 +688,14 @@
   }
 
   function hybridIntent() {
-    const strategy = adaptiveConfig.control_strategy || "weather_setpoint";
+    const strategy = adaptiveConfig.control_strategy || "weather";
     const dampers = adaptive.active_dampers || {};
     const activePlan = Object.entries(dampers).length
       ? Object.entries(dampers).slice(0, 4).map(([id, value]) => `${zoneName(id, groups[String(id)] || {})} ${Math.round(Number(value))}%`).join(", ")
       : selectedZones.filter(([_id, group]) => groupIsOn(group)).slice(0, 4).map(([id, group]) => `${zoneName(id, group)} ${Math.round(finite(group?.status?.percentage) ?? 0)}%`).join(", ");
     const heatCool = ["heat", "cool", "auto"].includes(currentModeKey);
     return {
-      headline: strategy === "hybrid_damper_mpc" && heatCool ? "Damper Plan" : "AirTouch Has Control",
+      headline: strategy === "hybrid" && heatCool ? "Damper Plan" : "AirTouch Has Control",
       summary: activePlan || (heatCool ? "Zone airflow preview will appear when adaptive has a plan" : "Dry and Fan keep thermal and air-quality previews separate"),
       fields: [
         adaptiveMetric("Control Temperature", heatCool && selectedThermostat.current !== null ? tempText(selectedThermostat.current, 1) : "-"),
@@ -776,7 +785,8 @@
   function applyThemePreference(theme = selectedTheme) {
     if (typeof document === "undefined") return;
     const requested = ["system", "light", "dark"].includes(theme) ? theme : "system";
-    const systemDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true;
+    const systemDark = themeMediaQuery?.matches ?? window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true;
+    document.body.dataset.themePreference = requested;
     document.body.dataset.theme = requested === "system" ? (systemDark ? "dark" : "light") : requested;
   }
 
@@ -786,40 +796,19 @@
     applyThemePreference(selectedTheme);
   }
 
+  function applyModeStyleToBody(styleText) {
+    if (typeof document === "undefined" || !styleText) return;
+    for (const declaration of styleText.split(";")) {
+      const [name, ...valueParts] = declaration.split(":");
+      const value = valueParts.join(":").trim();
+      if (name?.trim().startsWith("--") && value) document.body.style.setProperty(name.trim(), value);
+    }
+  }
+
   function setShowSupportDiagnostics(value) {
     showSupportDiagnostics = !!value;
     localStorage.setItem("airtouch4.showSupportDiagnostics", showSupportDiagnostics ? "true" : "false");
     if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
-  }
-
-  function acBaseRecordsFromState() {
-    return acEntries.map(([id, ac]) => ({
-      ac: Number(id),
-      group_start: Number(ac?.base?.group_start ?? 0),
-      group_count: Number(ac?.base?.group_count ?? 0),
-      brand: Number(ac?.base?.brand ?? 0),
-      name: ac?.base?.name || `AC ${Number(id) + 1}`
-    }));
-  }
-
-  function acSettingRecordsFromState() {
-    return acEntries.map(([id, ac]) => {
-      const settings = ac?.settings || {};
-      return {
-        ac: Number(id),
-        hide_spill_group: !!settings.hide_spill_group,
-        ctrl_thermostat: Number(settings.ctrl_thermostat ?? 0),
-        cool_adjust: Number(settings.cool_adjust ?? 0),
-        heat_adjust: Number(settings.heat_adjust ?? 0),
-        modes: settings.modes || {},
-        fan_values: settings.fan_values || {},
-        auto_off: !!settings.auto_off,
-        on_time_limit: Number(settings.on_time_limit ?? 0),
-        max_setpoint: Number(settings.max_setpoint ?? 30),
-        min_setpoint: Number(settings.min_setpoint ?? 16),
-        selector_visibility: settings.selector_visibility || {}
-      };
-    });
   }
 
   function saveAcBase(event, id) {
@@ -829,54 +818,11 @@
     sendCommand("ac_base_info", payload, `ac-base-${id}`);
   }
 
-  function applyAcSettingsCard(record, card) {
-    record.hide_spill_group = card.querySelector('[data-field="hide-spill"]')?.value === "true";
-    record.ctrl_thermostat = Number(card.querySelector('[data-field="ctrl-thermostat"]')?.value || record.ctrl_thermostat || 0);
-    record.cool_adjust = Number(card.querySelector('[data-field="cool-adjust"]')?.value || 0);
-    record.heat_adjust = Number(card.querySelector('[data-field="heat-adjust"]')?.value || 0);
-    record.min_setpoint = Number(card.querySelector('[data-field="min-setpoint"]')?.value || 16);
-    record.max_setpoint = Number(card.querySelector('[data-field="max-setpoint"]')?.value || 30);
-    record.auto_off = card.querySelector('[data-field="auto-off"]')?.value === "true";
-    record.on_time_limit = Number(card.querySelector('[data-field="on-time-limit"]')?.value || 0);
-    record.modes = {
-      auto: card.querySelector('[data-field="mode-auto"]')?.value === "true",
-      cool: card.querySelector('[data-field="mode-cool"]')?.value === "true",
-      heat: card.querySelector('[data-field="mode-heat"]')?.value === "true",
-      dry: card.querySelector('[data-field="mode-dry"]')?.value === "true",
-      fan: card.querySelector('[data-field="mode-fan"]')?.value === "true"
-    };
-    record.fan_values = {
-      auto: Number(card.querySelector('[data-field="fan-auto"]')?.value || 0),
-      quiet: Number(card.querySelector('[data-field="fan-quiet"]')?.value || 0),
-      low: Number(card.querySelector('[data-field="fan-low"]')?.value || 1),
-      medium: Number(card.querySelector('[data-field="fan-medium"]')?.value || 2),
-      high: Number(card.querySelector('[data-field="fan-high"]')?.value || 3),
-      powerful: Number(card.querySelector('[data-field="fan-powerful"]')?.value || 0),
-      turbo: Number(card.querySelector('[data-field="fan-turbo"]')?.value || 0)
-    };
-    record.selector_visibility = {
-      auto: card.querySelector('[data-field="selector-auto"]')?.value === "true",
-      touchpad_1: card.querySelector('[data-field="selector-touchpad_1"]')?.value === "true",
-      touchpad_2: card.querySelector('[data-field="selector-touchpad_2"]')?.value === "true",
-      average: card.querySelector('[data-field="selector-average"]')?.value === "true",
-      economy: card.querySelector('[data-field="selector-economy"]')?.value === "true",
-      groups_1_8_bitmap: Number(card.querySelector('[data-field="selector-groups-1"]')?.value || 0),
-      groups_9_16_bitmap: Number(card.querySelector('[data-field="selector-groups-2"]')?.value || 0)
-    };
-    return record;
-  }
-
   function saveAcSettings(event, id) {
     const card = event.currentTarget.closest("[data-service-ac]");
     const payload = acSettingsPayload(card, id, acEntries);
     if (!payload) return;
     sendCommand("ac_setting_new", payload, `ac-settings-${id}`);
-  }
-
-  function resetTempOffsets(event, id) {
-    const card = event.currentTarget.closest("[data-service-ac]");
-    resetTempOffsetInputs(card);
-    saveAcSettings(event, id);
   }
 
   function saveTurboGroup(event, id) {
@@ -933,13 +879,16 @@
     pollTimer = setInterval(() => {
       if (socketState !== "live") load();
     }, 15000);
-    window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => applyThemePreference(selectedTheme));
+    themeMediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)") || null;
+    themeMediaHandler = () => applyThemePreference(selectedTheme);
+    themeMediaQuery?.addEventListener?.("change", themeMediaHandler);
   });
 
   onDestroy(() => {
     if (socket) socket.close();
     if (reconnectTimer) clearTimeout(reconnectTimer);
     if (pollTimer) clearInterval(pollTimer);
+    if (themeMediaHandler) themeMediaQuery?.removeEventListener?.("change", themeMediaHandler);
   });
 
   $: runtime = snapshot?.runtime?.runtime || {};
@@ -971,12 +920,13 @@
   $: selectedGroupEntries = (groupEntries, groupEntriesForAc(selectedAc, {includeSpill: true}));
   $: selectedThermostat = thermostatFor(selectedAc, selectedZones);
   $: selectedSensorName = firstSensorName(selectedZones);
-  $: selectedRoomName = activeRoomName(selectedZones);
+  $: selectedRoomName = mainDisplayRoomName(selectedAc, selectedAcId, selectedZones);
   $: selectedSourceHint = acSourceHint(selectedAc, selectedZones, selectedThermostat);
   $: currentModeKey = modeKey(selectedStatus.mode);
   $: selectedTemperatureChart = temperatureChart(selectedZones, selectedThermostat, selectedStatus, integrations.adaptive || {}, selectedAcId);
   $: selectedHistoryEntries = selectedTemperatureChart.historyEntries;
   $: modeStyle = modeStyleFor(currentModeKey);
+  $: applyModeStyleToBody(modeStyle);
   $: activeZoneCount = selectedZones.filter(([_id, group]) => groupIsOn(group)).length;
   $: averageDamper = average(selectedZones.map(([_id, group]) => group?.status?.percentage));
   $: sensorRows = (system, groupEntries, sensorRowsFromState());
@@ -992,6 +942,7 @@
   $: adaptiveHybridIntent = hybridIntent();
   $: serviceViews = showSupportDiagnostics ? [...BASE_SERVICE_VIEWS, SUPPORT_SERVICE_VIEW] : BASE_SERVICE_VIEWS;
   $: if (activeServiceView === "spill") activeServiceView = "ac-setup";
+  $: if (activeServiceView === "general" || activeServiceView === "parameters") activeServiceView = "app";
   $: if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
   $: {
     const balanceVisible = activeView === "service" && activeServiceView === "balance";
@@ -1116,6 +1067,7 @@
         {busEvents}
         {sensorRows}
         {groupEntries}
+        {selectedZones}
         {selectedGroupEntries}
         {acEntries}
         {balanceRows}
@@ -1135,7 +1087,6 @@
         {acName}
         {saveAcBase}
         {saveAcSettings}
-        {resetTempOffsets}
         {saveTurboGroup}
         {saveParameters}
         {saveService}

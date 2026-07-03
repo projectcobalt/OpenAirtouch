@@ -110,15 +110,65 @@ export function activeRoomName(zones) {
   return active ? zoneName(active[0], active[1]) : zoneName(zones[0]?.[0] ?? 0, zones[0]?.[1] || {});
 }
 
-export function thermostatFor(ac, zones) {
+export function controlRoomName(ac, zones) {
+  const selector = finite(ac?.settings?.ctrl_thermostat);
+  const activeSensorZones = zones.filter(([_id, group]) => {
+    const status = group?.status || {};
+    return groupIsOn(group) && status.has_sensor === true && status.sensor_control !== false;
+  });
+  const controlTemperature = finite(ac?.status?.sensor_temp);
+  if (controlTemperature !== null) {
+    const matchingZones = activeSensorZones.filter(([_id, group]) => finite(group?.status?.temperature) === controlTemperature);
+    if (matchingZones.length === 1) return zoneName(matchingZones[0][0], matchingZones[0][1]);
+  }
+
+  if (selector !== null && selector < 253) {
+    const mapped = zones.find(([_id, group]) => Number(group?.grouping?.thermostat) === selector);
+    return mapped ? zoneName(mapped[0], mapped[1]) : `Sensor ${selector}`;
+  }
+
+  if (activeSensorZones.length === 1) return zoneName(activeSensorZones[0][0], activeSensorZones[0][1]);
+  if (activeSensorZones.length > 1) return "Averaged Zones";
+
+  const firstSensorZone = zones.find(([_id, group]) => group?.status?.has_sensor === true);
+  return firstSensorZone ? zoneName(firstSensorZone[0], firstSensorZone[1]) : zoneName(zones[0]?.[0] ?? 0, zones[0]?.[1] || {});
+}
+
+export function mainDisplayRoomName(system, ac, acId, zones) {
+  const records = system?.main_display?.records;
+  if (Array.isArray(records)) {
+    const acRecords = records.filter((record) => Number(record?.ac) === Number(acId));
+    const record = acRecords.at(-1);
+    const rawBytes = String(record?.raw || "").split(/\s+/).map((item) => Number.parseInt(item, 16)).filter(Number.isFinite);
+    const sensor = finite(record?.sign_sensor) ?? finite(rawBytes[2]);
+    const groupId = finite(record?.sign_group) ?? (sensor !== null && sensor >= 224 ? sensor - 224 : sensor);
+    if (groupId !== null && groupId >= 0 && groupId <= 15) {
+      const group = zones.find(([id]) => Number(id) === groupId);
+      if (group && groupIsOn(group[1])) return zoneName(group[0], group[1]);
+      if (group) return controlRoomName(ac, zones);
+      return `Zone ${groupId + 1}`;
+    }
+    if (sensor === 254) return "Average";
+    if (sensor === 144) return "Touchpad 1";
+    if (sensor === 145) return "Touchpad 2";
+  }
+  return controlRoomName(ac, zones);
+}
+
+export function thermostatFor(ac, zones, integrations = {}) {
   const status = ac?.status || {};
   const settings = ac?.settings || {};
   const sensorZones = zones.map(([_id, group]) => group?.status || {}).filter((item) => item.has_sensor);
   const activeSensorZones = sensorZones.filter((item) => item.sensor_control && (item.power_code === 1 || item.power_name === "on"));
+  const haIndoorTemperature = finite(integrations?.indoor?.state?.temperature);
+  const activeZoneTemperature = average(zones
+    .filter(([_id, group]) => groupIsOn(group))
+    .map(([_id, group]) => group?.status?.temperature));
+  const allZoneTemperature = average(zones.map(([_id, group]) => group?.status?.temperature));
   return {
     min: finite(settings.min_setpoint) ?? 16,
     max: finite(settings.max_setpoint) ?? 30,
-    current: finite(status.sensor_temp) ?? average(sensorZones.map((item) => item.temperature)),
+    current: haIndoorTemperature ?? activeZoneTemperature ?? allZoneTemperature,
     setpoint: average(activeSensorZones.map((item) => item.setpoint)) ?? finite(status.setpoint)
   };
 }
@@ -258,8 +308,7 @@ export function temperatureChart(zones, thermostat, status, adaptiveState, acId)
   const activeZoneCount = zones.filter(([_id, group]) => groupIsOn(group)).length;
   const historyEntries = aggregateTemperatureHistory(zones, thermostat);
   const suppliedPlan = availableTemperaturePlan(adaptiveState, acId, zones);
-  const fallbackPlanEntries = plannedTemperatureEntries(historyEntries, thermostat, status, activeZoneCount);
-  const planEntries = suppliedPlan?.entries?.length ? suppliedPlan.entries : fallbackPlanEntries;
+  const planEntries = suppliedPlan?.entries?.length ? suppliedPlan.entries : [];
   const planSeries = historyEntries.length && planEntries.length ? [historyEntries.at(-1), ...planEntries] : [];
   const current = finite(historyEntries.at(-1)?.temperature) ?? finite(thermostat?.current);
   const callActive = suppliedPlan?.entries?.length ? suppliedPlan.callActive : thermalCallActive(current, finite(thermostat?.setpoint), status);

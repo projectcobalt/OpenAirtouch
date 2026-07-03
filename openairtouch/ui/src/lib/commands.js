@@ -113,7 +113,7 @@ export function acTimerPayload(card, id, acEntries) {
 export function adaptiveConfigPayload(card) {
   return {
     mode: card?.querySelector("#adaptive-mode")?.value || "off",
-    control_strategy: card?.querySelector("#adaptive-control-strategy")?.value || "weather_setpoint",
+    control_strategy: card?.querySelector("#adaptive-control-strategy")?.value || "weather",
     cool_diff: Number(card?.querySelector("#adaptive-cool-diff")?.value || 4),
     cool_comfort_temp: Number(card?.querySelector("#adaptive-cool-comfort-temp")?.value || 24),
     heat_diff: Number(card?.querySelector("#adaptive-heat-diff")?.value || 4),
@@ -203,9 +203,15 @@ export function parametersPayload(card, system = {}, groupEntries = []) {
     const input = card?.querySelector(`[data-field="${field}"]`);
     return input ? Number(input.value || fallback || 0) : Number(fallback || 0);
   };
+  const damperRpmValue = () => {
+    const input = card?.querySelector('[data-field="damper-rpm"]');
+    if (!input) return Number(system.damper_rpm ?? 100);
+    const decimal = Number(input.value || 1);
+    return Math.round(decimal * 100);
+  };
   return {
     group_count: numberValue("group-count", system.group_count ?? groupEntries.length ?? 1),
-    damper_rpm: numberValue("damper-rpm", system.damper_rpm ?? 100),
+    damper_rpm: damperRpmValue(),
     touchpad_1_location: numberValue("touchpad-1-location", system.touchpad_1_location ?? 255),
     touchpad_2_location: numberValue("touchpad-2-location", system.touchpad_2_location ?? 255),
     ac_button_blocked: selectBool("ac-button-blocked", system.ac_button_blocked),
@@ -263,23 +269,24 @@ export function acBasePayload(card, id, acEntries, system = {}) {
   const records = acBaseRecordsFromState(acEntries);
   const record = records.find((item) => Number(item.ac) === Number(id));
   if (!record) return null;
+  const field = (name) => card?.querySelector(`[data-field="${name}"]`);
   record.name = card?.querySelector('[data-field="ac-name"]')?.value || record.name;
-  record.group_start = Number(card?.querySelector('[data-field="ac-group-start"]')?.value || 0);
-  record.group_count = Number(card?.querySelector('[data-field="ac-group-count"]')?.value || 0);
-  record.brand = Number(card?.querySelector('[data-field="ac-brand"]')?.value || record.brand || 0);
+  record.group_start = field("ac-group-start") ? Number(field("ac-group-start")?.value || 0) : record.group_start;
+  record.group_count = field("ac-group-count") ? Number(field("ac-group-count")?.value || 0) : record.group_count;
+  record.brand = field("ac-brand") ? Number(field("ac-brand")?.value || record.brand || 0) : record.brand;
   return {one_duct_system: !!system.one_duct_system, ac_count: records.length, records};
 }
 
 export function applyAcSettingsCard(record, card) {
   const field = (name) => card?.querySelector(`[data-field="${name}"]`);
-  record.hide_spill_group = card?.querySelector('[data-field="hide-spill"]')?.value === "true";
-  record.ctrl_thermostat = Number(card?.querySelector('[data-field="ctrl-thermostat"]')?.value || record.ctrl_thermostat || 0);
-  record.cool_adjust = Number(card?.querySelector('[data-field="cool-adjust"]')?.value || 0);
-  record.heat_adjust = Number(card?.querySelector('[data-field="heat-adjust"]')?.value || 0);
-  record.min_setpoint = Number(card?.querySelector('[data-field="min-setpoint"]')?.value || 16);
-  record.max_setpoint = Number(card?.querySelector('[data-field="max-setpoint"]')?.value || 30);
-  record.auto_off = card?.querySelector('[data-field="auto-off"]')?.value === "true";
-  record.on_time_limit = Number(card?.querySelector('[data-field="on-time-limit"]')?.value || 0);
+  if (field("hide-spill")) record.hide_spill_group = field("hide-spill")?.value === "true";
+  if (field("ctrl-thermostat")) record.ctrl_thermostat = Number(field("ctrl-thermostat")?.value || record.ctrl_thermostat || 0);
+  if (field("cool-adjust")) record.cool_adjust = Number(field("cool-adjust")?.value || 0);
+  if (field("heat-adjust")) record.heat_adjust = Number(field("heat-adjust")?.value || 0);
+  if (field("min-setpoint")) record.min_setpoint = Number(field("min-setpoint")?.value || 16);
+  if (field("max-setpoint")) record.max_setpoint = Number(field("max-setpoint")?.value || 30);
+  if (field("auto-off")) record.auto_off = field("auto-off")?.value === "true";
+  if (field("on-time-limit")) record.on_time_limit = Number(field("on-time-limit")?.value || 0);
   if (field("mode-auto")) {
     record.modes = {
       auto: field("mode-auto")?.value === "true",
@@ -320,13 +327,6 @@ export function acSettingsPayload(card, id, acEntries) {
   if (!record) return null;
   applyAcSettingsCard(record, card);
   return {records};
-}
-
-export function resetTempOffsetInputs(card) {
-  const cool = card?.querySelector('[data-field="cool-adjust"]');
-  const heat = card?.querySelector('[data-field="heat-adjust"]');
-  if (cool) cool.value = 0;
-  if (heat) heat.value = 0;
 }
 
 export function turboGroupPayload(card, id, system = {}, acEntries = []) {

@@ -5,7 +5,6 @@
   import GroupingSettings from "./settings/GroupingSettings.svelte";
   import BalanceSettings from "./settings/BalanceSettings.svelte";
   import AcSetupSettings from "./settings/AcSetupSettings.svelte";
-  import GeneralSettings from "./settings/GeneralSettings.svelte";
   import ServiceSettings from "./settings/ServiceSettings.svelte";
   import DiagnosticsSettings from "./settings/DiagnosticsSettings.svelte";
 
@@ -22,6 +21,7 @@
   export let busEvents = [];
   export let sensorRows = [];
   export let groupEntries = [];
+  export let selectedZones = [];
   export let selectedGroupEntries = [];
   export let acEntries = [];
   export let balanceRows = {};
@@ -41,7 +41,6 @@
   export let acName = (id) => `AC ${Number(id) + 1}`;
   export let saveAcBase = () => {};
   export let saveAcSettings = () => {};
-  export let resetTempOffsets = () => {};
   export let saveTurboGroup = () => {};
   export let saveParameters = () => {};
   export let saveService = () => {};
@@ -62,7 +61,7 @@
 
   <div class="settings-page">
     {#if activeServiceView === "app"}
-      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} {setTheme} {setShowSupportDiagnostics} {savePreference} />
+      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveParameters} />
     {:else if activeServiceView === "sensors"}
       <SensorSettings {scopedSensorRows} {system} {pairSensor} {sensorKindLabel} {saveSensorTemperature} {confirmAction} />
     {:else if activeServiceView === "grouping"}
@@ -70,9 +69,9 @@
     {:else if activeServiceView === "balance"}
       <BalanceSettings {scopedGroupEntries} {balanceRows} {zoneName} {stepBalance} {balanceAction} />
     {:else if activeServiceView === "ac-setup"}
-      <AcSetupSettings {acEntries} {scopedGroupEntries} {system} {acName} {zoneName} {saveAcBase} {saveAcSettings} {resetTempOffsets} {saveTurboGroup} {saveSpill} />
+      <AcSetupSettings {acEntries} {scopedGroupEntries} {system} {acName} {zoneName} {saveAcBase} {saveAcSettings} {saveTurboGroup} {saveSpill} />
     {:else if activeServiceView === "general" || activeServiceView === "parameters"}
-      <GeneralSettings {system} {groupEntries} {saveParameters} />
+      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveParameters} />
     {:else if activeServiceView === "service" || activeServiceView === "system"}
       <ServiceSettings {service} {saveService} />
     {:else}
