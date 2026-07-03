@@ -63,7 +63,7 @@
   }
 
   function busEventRows(events) {
-    const rows = (events || []).slice(-20).reverse().map((event) => {
+    const rows = (events || []).slice(-18).reverse().map((event) => {
       const direction = event.direction ? title(event.direction) : title(event.event || "event");
       const path = event.src && event.dest ? `${direction} ${event.src} -> ${event.dest}` : direction;
       const message = eventMessage(event);

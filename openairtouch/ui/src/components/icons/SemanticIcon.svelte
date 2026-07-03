@@ -2,6 +2,7 @@
   import {
     Activity,
     ArrowLeftRight,
+    Battery,
     Circle,
     Droplets,
     Fan,
@@ -12,6 +13,7 @@
     Power,
     RefreshCw,
     Settings,
+    Signal,
     Snowflake,
     Thermometer,
     ThermometerSun,
@@ -27,6 +29,7 @@
   const icons = {
     activity: Activity,
     arrowsHorizontal: ArrowLeftRight,
+    battery: Battery,
     cool: Snowflake,
     damper: Waves,
     dry: Droplets,
@@ -41,6 +44,7 @@
     refresh: RefreshCw,
     room: House,
     service: Settings,
+    signal: Signal,
     status: Circle,
     temperature: Thermometer,
     wind: Wind

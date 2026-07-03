@@ -4,6 +4,7 @@
   import RoomPanel from "./components/RoomPanel.svelte";
   import Subnav from "./components/Subnav.svelte";
   import ViewHeading from "./components/ViewHeading.svelte";
+  import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import ControlView from "./views/ControlView.svelte";
   import AdaptiveView from "./views/AdaptiveView.svelte";
   import FavouritesView from "./views/FavouritesView.svelte";
@@ -70,16 +71,18 @@
   let activeProgramView = "favourites";
   let activeAdaptiveView = "status";
   let activeServiceView = "app";
+  let balanceWasVisible = false;
   let selectedTheme = "system";
   let showSupportDiagnostics = false;
   let busEvents = [];
+  let confirmDialog = null;
   let socket = null;
   let reconnectTimer = null;
   let pollTimer = null;
 
   const PROGRAM_VIEWS = [["favourites", "Favourites"], ["programs", "Programs"], ["timers", "AC Timer"]];
   const ADAPTIVE_VIEWS = [["status", "Status"], ["config", "Config"], ["analytics", "Analytics"]];
-  const BASE_SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["spill", "Spill"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["general", "General"], ["service", "Service"]];
+  const BASE_SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["general", "General"], ["service", "Service"]];
   const SUPPORT_SERVICE_VIEW = ["diagnostics", "Support"];
 
   async function load() {
@@ -173,6 +176,18 @@
 
   function configuredModes(settings) {
     return selectConfiguredModes(settings);
+  }
+
+  function confirmAction(options = {}) {
+    return new Promise((resolve) => {
+      confirmDialog = {...options, resolve};
+    });
+  }
+
+  function resolveConfirmDialog(confirmed) {
+    const activeDialog = confirmDialog;
+    confirmDialog = null;
+    activeDialog?.resolve?.(confirmed);
   }
 
   function configuredFans(settings) {
@@ -704,7 +719,8 @@
   }
 
   function saveSensorTemperature(event, sensor) {
-    const card = event.currentTarget.closest("[data-sensor-row]");
+    const target = event?.currentTarget || event;
+    const card = target?.matches?.("[data-sensor-row]") ? target : target?.closest?.("[data-sensor-row]");
     const payload = sensorTemperaturePayload(card, sensor);
     if (!payload) return;
     sendCommand("sensor_temperature", payload, `sensor-temperature-${sensor}`);
@@ -975,7 +991,13 @@
   $: adaptiveZoneIntent = zoneIntent();
   $: adaptiveHybridIntent = hybridIntent();
   $: serviceViews = showSupportDiagnostics ? [...BASE_SERVICE_VIEWS, SUPPORT_SERVICE_VIEW] : BASE_SERVICE_VIEWS;
+  $: if (activeServiceView === "spill") activeServiceView = "ac-setup";
   $: if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
+  $: {
+    const balanceVisible = activeView === "service" && activeServiceView === "balance";
+    if (balanceWasVisible && !balanceVisible) balanceAction("balance_stop");
+    balanceWasVisible = balanceVisible;
+  }
 </script>
 
 <main class="touch-shell" style={modeStyle} data-mode={currentModeKey} data-view={activeView}>
@@ -1103,8 +1125,8 @@
         {pairSensor}
         {sensorKindLabel}
         {saveSensorTemperature}
+        {confirmAction}
         {zoneName}
-        {groupIsOn}
         {saveGroupName}
         {saveGrouping}
         {saveSpill}
@@ -1121,4 +1143,5 @@
       />
     {/if}
   </section>
+  <ConfirmDialog dialog={confirmDialog} resolve={resolveConfirmDialog} />
 </main>

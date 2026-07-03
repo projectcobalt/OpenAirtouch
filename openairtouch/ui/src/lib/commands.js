@@ -156,14 +156,21 @@ export function balanceValuesFromPage(root = document) {
   const values = Array(16).fill(0);
   root.querySelectorAll("[data-balance-number]").forEach((input) => {
     const zone = Number(input.dataset.balanceNumber);
-    if (zone >= 0 && zone < values.length) values[zone] = Number(input.value);
+    const value = Number(input.value);
+    if (zone >= 0 && zone < values.length) values[zone] = value > 0 ? clamp(value, 5, 100) : 0;
   });
   return values;
 }
 
 export function stepBalanceInput(card, delta) {
   const input = card?.querySelector("[data-balance-number]");
-  if (input) input.value = String(clamp(Number(input.value || 0) + delta, 0, 255));
+  if (!input) return;
+  const current = Number(input.value || 0);
+  const stepped = current <= 0 && delta > 0 ? 5 : current + delta;
+  const next = stepped < 5 ? 0 : clamp(stepped, 5, 100);
+  input.value = String(next);
+  const display = card?.querySelector("[data-balance-display]");
+  if (display) display.textContent = next > 0 ? `${next}%` : "Disabled";
 }
 
 export function preferencePayload(card, system = {}) {
@@ -264,6 +271,7 @@ export function acBasePayload(card, id, acEntries, system = {}) {
 }
 
 export function applyAcSettingsCard(record, card) {
+  const field = (name) => card?.querySelector(`[data-field="${name}"]`);
   record.hide_spill_group = card?.querySelector('[data-field="hide-spill"]')?.value === "true";
   record.ctrl_thermostat = Number(card?.querySelector('[data-field="ctrl-thermostat"]')?.value || record.ctrl_thermostat || 0);
   record.cool_adjust = Number(card?.querySelector('[data-field="cool-adjust"]')?.value || 0);
@@ -272,31 +280,37 @@ export function applyAcSettingsCard(record, card) {
   record.max_setpoint = Number(card?.querySelector('[data-field="max-setpoint"]')?.value || 30);
   record.auto_off = card?.querySelector('[data-field="auto-off"]')?.value === "true";
   record.on_time_limit = Number(card?.querySelector('[data-field="on-time-limit"]')?.value || 0);
-  record.modes = {
-    auto: card?.querySelector('[data-field="mode-auto"]')?.value === "true",
-    cool: card?.querySelector('[data-field="mode-cool"]')?.value === "true",
-    heat: card?.querySelector('[data-field="mode-heat"]')?.value === "true",
-    dry: card?.querySelector('[data-field="mode-dry"]')?.value === "true",
-    fan: card?.querySelector('[data-field="mode-fan"]')?.value === "true"
-  };
-  record.fan_values = {
-    auto: Number(card?.querySelector('[data-field="fan-auto"]')?.value || 0),
-    quiet: Number(card?.querySelector('[data-field="fan-quiet"]')?.value || 0),
-    low: Number(card?.querySelector('[data-field="fan-low"]')?.value || 1),
-    medium: Number(card?.querySelector('[data-field="fan-medium"]')?.value || 2),
-    high: Number(card?.querySelector('[data-field="fan-high"]')?.value || 3),
-    powerful: Number(card?.querySelector('[data-field="fan-powerful"]')?.value || 0),
-    turbo: Number(card?.querySelector('[data-field="fan-turbo"]')?.value || 0)
-  };
-  record.selector_visibility = {
-    auto: card?.querySelector('[data-field="selector-auto"]')?.value === "true",
-    touchpad_1: card?.querySelector('[data-field="selector-touchpad_1"]')?.value === "true",
-    touchpad_2: card?.querySelector('[data-field="selector-touchpad_2"]')?.value === "true",
-    average: card?.querySelector('[data-field="selector-average"]')?.value === "true",
-    economy: card?.querySelector('[data-field="selector-economy"]')?.value === "true",
-    groups_1_8_bitmap: Number(card?.querySelector('[data-field="selector-groups-1"]')?.value || 0),
-    groups_9_16_bitmap: Number(card?.querySelector('[data-field="selector-groups-2"]')?.value || 0)
-  };
+  if (field("mode-auto")) {
+    record.modes = {
+      auto: field("mode-auto")?.value === "true",
+      cool: field("mode-cool")?.value === "true",
+      heat: field("mode-heat")?.value === "true",
+      dry: field("mode-dry")?.value === "true",
+      fan: field("mode-fan")?.value === "true"
+    };
+  }
+  if (field("fan-auto")) {
+    record.fan_values = {
+      auto: Number(field("fan-auto")?.value || 0),
+      quiet: Number(field("fan-quiet")?.value || 0),
+      low: Number(field("fan-low")?.value || 1),
+      medium: Number(field("fan-medium")?.value || 2),
+      high: Number(field("fan-high")?.value || 3),
+      powerful: Number(field("fan-powerful")?.value || 0),
+      turbo: Number(field("fan-turbo")?.value || 0)
+    };
+  }
+  if (field("selector-auto")) {
+    record.selector_visibility = {
+      auto: field("selector-auto")?.value === "true",
+      touchpad_1: field("selector-touchpad_1")?.value === "true",
+      touchpad_2: field("selector-touchpad_2")?.value === "true",
+      average: field("selector-average")?.value === "true",
+      economy: field("selector-economy")?.value === "true",
+      groups_1_8_bitmap: Number(field("selector-groups-1")?.value || 0),
+      groups_9_16_bitmap: Number(field("selector-groups-2")?.value || 0)
+    };
+  }
   return record;
 }
 

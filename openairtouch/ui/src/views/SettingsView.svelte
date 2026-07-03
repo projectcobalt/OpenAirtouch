@@ -3,7 +3,6 @@
   import AppSettings from "./settings/AppSettings.svelte";
   import SensorSettings from "./settings/SensorSettings.svelte";
   import GroupingSettings from "./settings/GroupingSettings.svelte";
-  import SpillSettings from "./settings/SpillSettings.svelte";
   import BalanceSettings from "./settings/BalanceSettings.svelte";
   import AcSetupSettings from "./settings/AcSetupSettings.svelte";
   import GeneralSettings from "./settings/GeneralSettings.svelte";
@@ -32,8 +31,8 @@
   export let pairSensor = () => {};
   export let sensorKindLabel = () => "Sensor";
   export let saveSensorTemperature = () => {};
+  export let confirmAction = async () => true;
   export let zoneName = (id) => `Zone ${Number(id) + 1}`;
-  export let groupIsOn = () => false;
   export let saveGroupName = () => {};
   export let saveGrouping = () => {};
   export let saveSpill = () => {};
@@ -61,23 +60,23 @@
 <section class="cards-view">
   <Subnav options={options} active={activeServiceView} className="service-subnav" on:change={(event) => onView(event.detail)} />
 
-  {#if activeServiceView === "app"}
-    <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} {setTheme} {setShowSupportDiagnostics} {savePreference} />
-  {:else if activeServiceView === "sensors"}
-    <SensorSettings {scopedSensorRows} {pairSensor} {sensorKindLabel} {saveSensorTemperature} />
-  {:else if activeServiceView === "grouping"}
-    <GroupingSettings {scopedGroupEntries} {zoneName} {groupIsOn} {saveGroupName} {saveGrouping} />
-  {:else if activeServiceView === "spill"}
-    <SpillSettings {scopedGroupEntries} {acEntries} {system} {zoneName} {acName} {saveSpill} />
-  {:else if activeServiceView === "balance"}
-    <BalanceSettings {scopedGroupEntries} {balanceRows} {zoneName} {stepBalance} {balanceAction} />
-  {:else if activeServiceView === "ac-setup"}
-    <AcSetupSettings {acEntries} {system} {acName} {saveAcBase} {saveAcSettings} {resetTempOffsets} {saveTurboGroup} />
-  {:else if activeServiceView === "general" || activeServiceView === "parameters"}
-    <GeneralSettings {system} {groupEntries} {saveParameters} />
-  {:else if activeServiceView === "service" || activeServiceView === "system"}
-    <ServiceSettings {service} {saveService} />
-  {:else}
-    <DiagnosticsSettings {runtime} {socketState} {controller} {transactions} {busEvents} {acEntries} />
-  {/if}
+  <div class="settings-page">
+    {#if activeServiceView === "app"}
+      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} {setTheme} {setShowSupportDiagnostics} {savePreference} />
+    {:else if activeServiceView === "sensors"}
+      <SensorSettings {scopedSensorRows} {system} {pairSensor} {sensorKindLabel} {saveSensorTemperature} {confirmAction} />
+    {:else if activeServiceView === "grouping"}
+      <GroupingSettings {scopedGroupEntries} {zoneName} {saveGroupName} {saveGrouping} />
+    {:else if activeServiceView === "balance"}
+      <BalanceSettings {scopedGroupEntries} {balanceRows} {zoneName} {stepBalance} {balanceAction} />
+    {:else if activeServiceView === "ac-setup"}
+      <AcSetupSettings {acEntries} {scopedGroupEntries} {system} {acName} {zoneName} {saveAcBase} {saveAcSettings} {resetTempOffsets} {saveTurboGroup} {saveSpill} />
+    {:else if activeServiceView === "general" || activeServiceView === "parameters"}
+      <GeneralSettings {system} {groupEntries} {saveParameters} />
+    {:else if activeServiceView === "service" || activeServiceView === "system"}
+      <ServiceSettings {service} {saveService} />
+    {:else}
+      <DiagnosticsSettings {runtime} {socketState} {controller} {transactions} {busEvents} {acEntries} />
+    {/if}
+  </div>
 </section>
