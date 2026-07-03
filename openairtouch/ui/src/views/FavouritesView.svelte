@@ -33,6 +33,7 @@
 
 <section class="cards-view">
   <Subnav {options} active={activeProgramView} on:change={(event) => dispatch("view", event.detail)} />
+  <div class="page-divider"></div>
 
   {#if activeProgramView === "favourites"}
     <div class="card-grid">

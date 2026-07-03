@@ -2,15 +2,19 @@
   import Field from "../../components/form/Field.svelte";
   import ToggleSelect from "../../components/form/ToggleSelect.svelte";
   import ActionRow from "../../components/form/ActionRow.svelte";
+  import GeneralSettings from "./GeneralSettings.svelte";
 
   export let runtime = {};
   export let controller = {};
   export let selectedTheme = "system";
   export let showSupportDiagnostics = false;
   export let system = {};
+  export let groupEntries = [];
   export let setTheme = () => {};
   export let setShowSupportDiagnostics = () => {};
   export let savePreference = () => {};
+  export let saveParameters = () => {};
+  export let zoneName = (id) => `Zone ${Number(id) + 1}`;
 
   function display(value) {
     return value === undefined || value === null || value === "" ? "-" : String(value);
@@ -26,31 +30,18 @@
 </script>
 
 <div class="summary-grid">
-  <article class="summary-card editor-card">
-    <div class="card-title">Appearance</div>
-    <div class="field">
-      <span>Theme</span>
-      <div class="theme-choices" role="group" aria-label="Theme">
-        {#each [["system", "System"], ["light", "Light"], ["dark", "Dark"]] as [theme, label]}
-          <button type="button" class="option" class:active={selectedTheme === theme} on:click={() => setTheme(theme)}>{label}</button>
-        {/each}
-      </div>
-    </div>
-  </article>
   <article class="summary-card editor-card" data-preference-card>
     <div class="card-title">Display</div>
     <div class="field-grid">
+      <label class="field">Theme<select value={selectedTheme} on:change={(event) => setTheme(event.currentTarget.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <Field label="System Name" id="system-name-input" maxlength="16" value={system.system_name || ""} />
       <ToggleSelect label="Show AC Errors" dataField="show-ac-errors" value={system.show_ac_errors} />
       <ToggleSelect label="Show Outside Temp" dataField="pref-show-outside-temp" value={system.show_outside_temp} />
       <ToggleSelect label="Fahrenheit" dataField="use-fahrenheit" value={system.use_fahrenheit} />
       <ToggleSelect label="Screensaver" dataField="screensaver-enabled" value={system.screensaver_enabled} />
       <Field label="Screen Timeout" dataField="screensaver-timeout" type="number" min="0" max="127" value={system.screensaver_timeout ?? 0} />
+      <label class="field">Support Diagnostics<select value={showSupportDiagnostics ? "true" : "false"} on:change={(event) => setShowSupportDiagnostics(event.currentTarget.value === "true")}><option value="false">Hidden</option><option value="true">Visible</option></select></label>
     </div>
-    <label class="check-row support-toggle">
-      <input type="checkbox" checked={showSupportDiagnostics} on:change={(event) => setShowSupportDiagnostics(event.currentTarget.checked)} />
-      <span>Show Support Diagnostics</span>
-    </label>
     <ActionRow><button type="button" class="action-primary" on:click={savePreference}>Save App</button></ActionRow>
   </article>
   <article class="summary-card editor-card">
@@ -61,4 +52,5 @@
       {/each}
     </div>
   </article>
+  <GeneralSettings {system} {groupEntries} {zoneName} {saveParameters} />
 </div>

@@ -8,7 +8,6 @@
   export let zoneName = (id) => `Zone ${Number(id) + 1}`;
   export let saveAcBase = () => {};
   export let saveAcSettings = () => {};
-  export let resetTempOffsets = () => {};
   export let saveTurboGroup = () => {};
   export let saveSpill = () => {};
 
@@ -41,6 +40,41 @@
   const fanSpeedSequence = (value, fallback) => {
     const sequence = Number(value ?? fallback);
     return Number.isFinite(sequence) && sequence !== 15 ? sequence : null;
+  };
+  const hasSelectorBit = (bitmap, groupId) => {
+    const group = Number(groupId);
+    if (group < 0 || group > 15) return false;
+    const mask = Number(bitmap ?? 0);
+    return !!(mask & (1 << (group % 8)));
+  };
+  const isGroupVisibleForSensor = (selectors, groupId) => {
+    const group = Number(groupId);
+    return group < 8 ? hasSelectorBit(selectors.groups_1_8_bitmap, group) : hasSelectorBit(selectors.groups_9_16_bitmap, group);
+  };
+  const controlSensorOptions = (selectors = {}, current, groups = scopedGroupEntries) => {
+    const options = [{label: "AC", value: 128}];
+    if (selectors.auto) options.push({label: "Auto", value: 255});
+    if (selectors.economy) options.push({label: "Economy", value: 253});
+    if (selectors.average) options.push({label: "Average", value: 254});
+    for (const [groupId, group] of groups) {
+      if (isGroupVisibleForSensor(selectors, groupId)) options.push({label: zoneName(groupId, group), value: Number(groupId)});
+    }
+    if (selectors.touchpad_1) options.push({label: "Touchpad 1", value: 144});
+    if (selectors.touchpad_2) options.push({label: "Touchpad 2", value: 145});
+    const selected = Number(current ?? 128);
+    if (!options.some((option) => option.value === selected)) options.push({label: `Raw ${selected}`, value: selected});
+    return options;
+  };
+  const groupEntriesForAc = (base) => {
+    if (system.one_duct_system) return scopedGroupEntries;
+    const start = Number(base.group_start ?? 0);
+    const count = Number(base.group_count ?? 0);
+    return scopedGroupEntries.filter(([groupId]) => Number(groupId) >= start && Number(groupId) < start + count);
+  };
+  const supportsTurboFan = (fans = {}) => fanSpeedSequence(fans.turbo, 0) !== null;
+  const isLastAc = (id) => {
+    const ids = acEntries.map(([entryId]) => Number(entryId));
+    return Number(id) === Math.max(...ids);
   };
 
   $: acIdList = acEntries.map(([id]) => String(id));
@@ -77,23 +111,27 @@
         </div>
       </div>
       <div class="field-grid">
-        <label class="field">Name<input data-field="ac-name" maxlength="8" value={base.name || acName(id, ac)} /></label>
-        <label class="field">First Zone<input data-field="ac-group-start" type="number" min="0" max="63" value={base.group_start ?? 0} readonly /></label>
-        <label class="field">Zone Count<input data-field="ac-group-count" type="number" min="0" max="63" value={base.group_count ?? 0} /></label>
+        <label class="field">AC Name<input data-field="ac-name" maxlength="8" value={base.name || acName(id, ac)} /></label>
+        <input data-field="ac-group-start" type="hidden" value={base.group_start ?? 0} />
+        {#if !system.one_duct_system}
+          <label class="field">AC Groups<input data-field="ac-group-count" type="number" min="0" max="63" value={base.group_count ?? 0} readonly={isLastAc(id)} /></label>
+        {/if}
         <input data-field="ac-brand" type="hidden" value={base.brand ?? 0} />
-        <label class="field">Cooling Offset<input data-field="cool-adjust" type="number" min="-8" max="7" value={settings.cool_adjust ?? 0} /></label>
-        <label class="field">Heating Offset<input data-field="heat-adjust" type="number" min="-8" max="7" value={settings.heat_adjust ?? 0} /></label>
-        <label class="field">Min Setpoint<input data-field="min-setpoint" type="number" min="0" max="255" value={settings.min_setpoint ?? 16} /></label>
-        <label class="field">Max Setpoint<input data-field="max-setpoint" type="number" min="0" max="255" value={settings.max_setpoint ?? 30} /></label>
         <label class="field">Auto Off<select data-field="auto-off"><option value="true" selected={settings.auto_off}>On</option><option value="false" selected={!settings.auto_off}>Off</option></select></label>
-        <label class="field">Time Limit<select data-field="on-time-limit">
+        <label class="field">On Duration Time<select data-field="on-time-limit">
           {#each [0, 1, 2, 3, 4, 5, 6, 7, 8] as hours}
             <option value={hours} selected={Number(settings.on_time_limit ?? 0) === hours}>{durationLabel(hours)}</option>
           {/each}
         </select></label>
-        <label class="field">Control Sensor<input data-field="ctrl-thermostat" type="number" min="0" max="255" value={settings.ctrl_thermostat ?? 0} /></label>
-        <label class="field">Show Spill Zone<select data-field="hide-spill"><option value="false" selected={!settings.hide_spill_group}>On</option><option value="true" selected={settings.hide_spill_group}>Off</option></select></label>
-        <label class="field">Spill/Bypass<select data-spill-ac={Number(id)}><option value="0" selected={spillType === 0}>None</option><option value="1" selected={spillType === 1}>Spill</option><option value="2" selected={spillType === 2}>Bypass</option></select></label>
+        <label class="field">Control Sensor<select data-field="ctrl-thermostat">
+          {#each controlSensorOptions(selectors, settings.ctrl_thermostat) as option}
+            <option value={option.value} selected={Number(settings.ctrl_thermostat ?? 128) === option.value}>{option.label}</option>
+          {/each}
+        </select></label>
+        <label class="field">Spill Type<select data-spill-ac={Number(id)}><option value="0" selected={spillType === 0}>No Spill And Bypass</option><option value="1" selected={spillType === 1}>Spill</option><option value="2" selected={spillType === 2}>Bypass</option></select></label>
+        {#if spillType === 1}
+          <label class="field">Hide Spill Group<select data-field="hide-spill"><option value="true" selected={settings.hide_spill_group}>Yes</option><option value="false" selected={!settings.hide_spill_group}>No</option></select></label>
+        {/if}
       </div>
       <details class="advanced-panel capability-panel">
         <summary>Capability Details</summary>
@@ -103,6 +141,12 @@
               <tr><th>Group</th><th>Item</th><th>Value</th></tr>
             </thead>
             <tbody>
+              <tr><td>AC Base</td><td>First Zone</td><td>{Number(base.group_start ?? 0) + 1}</td></tr>
+              <tr><td>AC Base</td><td>Brand</td><td>{brandName(base.brand)}</td></tr>
+              <tr><td>Setpoint Limit</td><td>Minimum</td><td>{settings.min_setpoint ?? 16}</td></tr>
+              <tr><td>Setpoint Limit</td><td>Maximum</td><td>{settings.max_setpoint ?? 30}</td></tr>
+              <tr><td>Temperature Offset</td><td>Cooling</td><td>{settings.cool_adjust ?? 0}</td></tr>
+              <tr><td>Temperature Offset</td><td>Heating</td><td>{settings.heat_adjust ?? 0}</td></tr>
               {#each ["auto", "cool", "heat", "dry", "fan"] as mode}
                 <tr><td>Modes</td><td>{title(mode)}</td><td>{modes[mode] ? "Available" : "Hidden"}</td></tr>
               {/each}
@@ -119,37 +163,35 @@
           </table>
         </div>
       </details>
-      <div class="field-grid">
-        <label class="field">Turbo Zone<select data-field="turbo-group">
-          <option value="255" selected={Number(turboRecord.group ?? 255) === 255}>Off</option>
+      <details class="advanced-panel capability-panel">
+        <summary>Spill Zones</summary>
+        <div class="chip-grid compact">
           {#each scopedGroupEntries as [groupId, group]}
-            <option value={Number(groupId)} selected={Number(turboRecord.group) === Number(groupId)}>{zoneName(groupId, group)}</option>
+            <label class="check-row">
+              <input type="checkbox" data-spill-group value={Number(groupId)} checked={group.spill_configured || group.status?.spill_on} />
+              <span>{zoneName(groupId, group)}</span>
+            </label>
           {/each}
-        </select></label>
-      </div>
+        </div>
+      </details>
+      {#if supportsTurboFan(fans)}
+        <div class="field-grid">
+          <label class="field">Turbo Group<select data-field="turbo-group">
+            <option value="255" selected={Number(turboRecord.group ?? 255) === 255}>None</option>
+            {#each groupEntriesForAc(base) as [groupId, group]}
+              <option value={Number(groupId)} selected={Number(turboRecord.group) === Number(groupId)}>{zoneName(groupId, group)}</option>
+            {/each}
+          </select></label>
+        </div>
+      {/if}
       <div class="service-actions">
-        <button type="button" on:click={(event) => saveAcBase(event, id)}>Save AC Base</button>
-        <button type="button" class="action-primary" on:click={(event) => saveAcSettings(event, id)}>Save AC Settings</button>
-        <button type="button" on:click={(event) => resetTempOffsets(event, id)}>Reset Offsets</button>
-        <button type="button" on:click={(event) => saveTurboGroup(event, id)}>Save Turbo Zone</button>
+        <button type="button" on:click={(event) => saveAcBase(event, id)}>Save Name</button>
+        <button type="button" class="action-primary" on:click={(event) => saveAcSettings(event, id)}>Save Settings</button>
+        {#if supportsTurboFan(fans)}
+          <button type="button" on:click={(event) => saveTurboGroup(event, id)}>Save Turbo Zone</button>
+        {/if}
+        <button type="button" on:click={saveSpill}>Save Spill</button>
       </div>
     </article>
   {/each}
-
-  <article class="summary-card editor-card ac-setup-card spill-zone-card">
-    <div class="card-title">Spill Zones</div>
-    <div class="chip-grid compact">
-      {#each scopedGroupEntries as [id, group]}
-        {@const status = group.status || {}}
-        <label class="check-row">
-          <input type="checkbox" data-spill-group value={Number(id)} checked={group.spill_configured || status.spill_on} />
-          <span>{zoneName(id, group)}</span>
-          <span>{status.spill_on ? `Active ${status.percentage ?? "-"}%` : group.spill_configured ? "Configured" : "Available"}</span>
-        </label>
-      {/each}
-    </div>
-    <div class="service-actions">
-      <button type="button" class="action-primary" on:click={saveSpill}>Save Spill/Bypass</button>
-    </div>
-  </article>
 </div>

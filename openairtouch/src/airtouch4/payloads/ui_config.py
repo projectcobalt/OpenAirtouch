@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..packet import hex_bytes
-from .common import bit, signed_hex, u16be
+from .common import SENSOR_SELECTORS, bit, signed_hex, u16be
 
 
 def ascii_field(data: bytes) -> str:
@@ -74,9 +74,20 @@ def decode_main_display_new(payload: bytes) -> dict[str, Any]:
     records = []
     for offset in range(0, len(payload) - 4, 5):
         rec = payload[offset:offset + 5]
+        sensor = rec[2]
+        sign_flags = rec[1]
+        group = sensor if sensor <= 15 else sensor - 0xE0 if sensor >= 0xE0 else None
         records.append({
             "ac": rec[0] & 0x0F,
             "hidden": bit(rec[0], 0x80),
+            "sign_flags": signed_hex(sign_flags),
+            "turbo_active": bit(sign_flags, 0x04),
+            "bypass_active": bit(sign_flags, 0x02),
+            "spill_active": bit(sign_flags, 0x01),
+            "sign_sensor": sensor,
+            "sign_sensor_name": SENSOR_SELECTORS.get(sensor, f"sensor_addr_{sensor}"),
+            "sign_group": group,
+            "sign_group_ui_zone": None if group is None else group + 1,
             "bytes_1_4": hex_bytes(rec[1:5]),
             "raw": hex_bytes(rec),
         })

@@ -53,6 +53,7 @@ class AirTouchState:
         elif kind == "ac_status_internal":
             for record in decoded.get("records", []):
                 self._merge(self.acs, record.get("ac"), {"status": record})
+                self._remember_ac_temperature(record)
         elif kind in {"ac_runtime_status", "ac_timer", "set_ac_timer"}:
             field_name = "runtime" if kind == "ac_runtime_status" else "timer"
             for record in decoded.get("records", []):
@@ -379,6 +380,24 @@ class AirTouchState:
         if isinstance(percentage, (int, float)):
             entry["percentage"] = percentage
         if history and history[-1].get("temperature") == temperature and history[-1].get("percentage") == entry.get("percentage"):
+            history[-1]["ts"] = int(time.time())
+            return
+        history.append(entry)
+        if len(history) > self.temperature_history_limit:
+            del history[:-self.temperature_history_limit]
+
+    def _remember_ac_temperature(self, record: dict[str, Any]) -> None:
+        ac = record.get("ac")
+        temperature = record.get("sensor_temp")
+        setpoint = record.get("setpoint")
+        if not isinstance(ac, int) or not isinstance(temperature, (int, float)):
+            return
+        current = self.acs.setdefault(ac, {})
+        history = current.setdefault("temperature_history", [])
+        entry = {"ts": int(time.time()), "temperature": temperature}
+        if isinstance(setpoint, (int, float)):
+            entry["setpoint"] = setpoint
+        if history and history[-1].get("temperature") == temperature and history[-1].get("setpoint") == entry.get("setpoint"):
             history[-1]["ts"] = int(time.time())
             return
         history.append(entry)

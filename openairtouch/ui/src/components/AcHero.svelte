@@ -50,6 +50,7 @@
   $: smoothPath = smoothHistoryPath(selectedHistoryPath);
   $: smoothPlanPath = smoothHistoryPath(selectedPlanPath);
   $: historyAreaPath = historyAreaFor(smoothPath);
+  $: controlRoomTemperature = selectedStatus.sensor_temp ?? selectedThermostat.current;
   $: planEnd = selectedPlanEntries.at(-1)?.temperature;
   $: planLabel = selectedPlanEntries.length ? tempText(planEnd, 1) : selectedCallLabel || (selectedHistoryEntries.length ? tempText(selectedHistoryEntries[selectedHistoryEntries.length - 1].temperature, 1) : "-");
 </script>
@@ -70,7 +71,7 @@
       </label>
     </div>
     <button type="button" class="hero-power" class:on={selectedStatus.power_on} disabled={pendingKey.startsWith("ac-power")} on:click={() => dispatch("power", !selectedStatus.power_on)} title="Power">
-      <SemanticIcon name="power" size={22} />
+      <SemanticIcon name="power" size={18} />
       <span>{selectedStatus.power_on ? "On" : "Off"}</span>
     </button>
   </div>
@@ -81,7 +82,7 @@
     </div>
     <div class="hero-current">
       <div class="hero-readout-label">Room</div>
-      <div class="hero-value small">{tempText(selectedThermostat.current, 1)}</div>
+      <div class="hero-value small">{tempText(controlRoomTemperature, 1)}</div>
       <div class="hero-status-line">{modeName(selectedStatus.mode)}</div>
     </div>
   </div>
