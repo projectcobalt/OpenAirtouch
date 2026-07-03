@@ -107,11 +107,12 @@ def _describe_decoded(decoded: dict[str, Any], *, direction: str) -> dict[str, A
                 )
         return _record_list("ac_config", f"{prefix} AC Settings", lines)
     if kind == "sensor_info":
+        records = decoded.get("records")
+        if isinstance(records, list):
+            lines = [_describe_sensor_info(record) for record in records if isinstance(record, dict)]
+            return _record_list("sensor", f"{prefix} Sensor Info", lines)
         sensor = decoded.get("sensor")
-        return _plain(
-            "sensor",
-            f"{prefix} Sensor {_hex_or_text(sensor)} Reports {_temp(decoded.get('temperature'))}",
-        )
+        return _plain("sensor", f"{prefix} Sensor {_hex_or_text(sensor)} Reports {_temp(decoded.get('temperature'))}")
     if kind == "sensor_list":
         sensor_count = len(decoded.get("sensor_addresses") or [])
         touchpad_count = len(decoded.get("touchpad_addresses") or [])
@@ -219,6 +220,26 @@ def _describe_grouping(record: dict[str, Any]) -> str:
         f"Zone {_one_based(record.get('group'))}: Dampers {_one_based(start)}-{_one_based(end)}, "
         f"Minimum {_text(record.get('min_percent'), '-')}%, Thermostat {_hex_or_text(record.get('thermostat'))}"
     )
+
+
+def _describe_sensor_info(record: dict[str, Any]) -> str:
+    parts = [
+        f"Sensor {_hex_or_text(record.get('sensor'))}",
+        f"{_temp(record.get('temperature'))}",
+    ]
+    kind = record.get("kind") or record.get("sensor_kind")
+    if kind:
+        parts.append(_title(kind))
+    if record.get("battery") is not None:
+        parts.append(f"Battery {_text(record.get('battery'), '-')}%")
+    if record.get("low_battery"):
+        parts.append("Battery Low")
+    if record.get("signal") is not None:
+        parts.append(f"Signal {_text(record.get('signal'), '-')} dBm")
+    status = record.get("status")
+    if status:
+        parts.append(_display_text(status))
+    return ", ".join(parts)
 
 
 def _record_list(category: str, headline: str, records: list[str]) -> dict[str, Any]:

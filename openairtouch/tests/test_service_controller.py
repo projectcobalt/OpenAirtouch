@@ -373,6 +373,40 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertIn("Set Zone 3", record["summary"])
         self.assertIn("Open 85%", record["summary"])
 
+    def test_event_record_adds_plain_english_sensor_info_records(self) -> None:
+        packet = AirTouchPacket(
+            dest=0x9F,
+            src=0x80,
+            packet_id=0x11,
+            command=0x73,
+            payload=b"",
+            raw_mode=True,
+        )
+        event = RuntimeEvent(
+            "rx",
+            packet=packet,
+            decoded={
+                "type": "sensor_info",
+                "records": [{
+                    "sensor": 0,
+                    "kind": "rf",
+                    "temperature": 25.7,
+                    "battery": 100,
+                    "signal": -80,
+                    "status": "ok",
+                }],
+            },
+            state_changed=True,
+        )
+
+        record = _event_record(event)
+
+        self.assertEqual(record["plain"]["category"], "sensor")
+        self.assertEqual(record["plain"]["category_label"], "Sensor")
+        self.assertIn("Sensor 0x00", record["summary"])
+        self.assertIn("25.7 C", record["summary"])
+        self.assertIn("Battery 100%", record["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

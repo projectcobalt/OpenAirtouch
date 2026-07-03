@@ -9,8 +9,55 @@
   import FavouritesView from "./views/FavouritesView.svelte";
   import SettingsView from "./views/SettingsView.svelte";
   import { MODE_OPTIONS, fanName, modeKey, modeName } from "./lib/airtouch.js";
+  import {
+    acBasePayload,
+    acSettingsPayload,
+    acTimerPayload,
+    adaptiveConfigPayload,
+    balanceValuesFromPage as buildBalanceValuesFromPage,
+    checkedValues as buildCheckedValues,
+    clearFavouritePayload,
+    clearProgramPayload,
+    favouritePayload,
+    groupNamePayload,
+    groupingPayload,
+    parametersPayload,
+    preferencePayload,
+    programPayload,
+    resetTempOffsetInputs,
+    sensorTemperaturePayload,
+    servicePayload,
+    spillPayload,
+    stepBalanceInput,
+    timerFromCard as buildTimerFromCard,
+    turboGroupPayload,
+    zonePayload as buildZonePayload
+  } from "./lib/commands.js";
   import { apiPath, fetchJson, postCommand, wsPath } from "./lib/client.js";
   import { clamp, finite, percentText, tempText, title } from "./lib/format.js";
+  import {
+    acName as selectAcName,
+    activeRoomName as selectActiveRoomName,
+    activeZoneEntriesForAc as selectActiveZoneEntriesForAc,
+    average as selectAverage,
+    configuredAcEntries as selectConfiguredAcEntries,
+    configuredFans as selectConfiguredFans,
+    configuredModes as selectConfiguredModes,
+    firstSensorName as selectFirstSensorName,
+    groupBadges as selectGroupBadges,
+    groupEntriesForAc as selectGroupEntriesForAc,
+    groupIsConfigured as selectGroupIsConfigured,
+    groupIsOn as selectGroupIsOn,
+    groupIsSpill as selectGroupIsSpill,
+    groupsFromBitmap as selectGroupsFromBitmap,
+    sensorKindLabel as selectSensorKindLabel,
+    sensorRowsFromState as selectSensorRowsFromState,
+    splitGroupBitmap as selectSplitGroupBitmap,
+    temperatureChart as selectTemperatureChart,
+    thermostatFor as selectThermostatFor,
+    zoneName as selectZoneName,
+    zoneRoomTemperature as selectZoneRoomTemperature
+  } from "./lib/selectors.js";
   import { modeStyleFor } from "./lib/tokens.js";
 
   let health = null;
@@ -24,25 +71,41 @@
   let activeAdaptiveView = "status";
   let activeServiceView = "app";
   let selectedTheme = "system";
+  let showSupportDiagnostics = false;
+  let busEvents = [];
   let socket = null;
   let reconnectTimer = null;
   let pollTimer = null;
 
   const PROGRAM_VIEWS = [["favourites", "Favourites"], ["programs", "Programs"], ["timers", "AC Timer"]];
   const ADAPTIVE_VIEWS = [["status", "Status"], ["config", "Config"], ["analytics", "Analytics"]];
-  const SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["spill", "Spill"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["parameters", "Parameters"], ["system", "System Info"], ["diagnostics", "Diagnostics"]];
+  const BASE_SERVICE_VIEWS = [["app", "App"], ["sensors", "Sensors"], ["grouping", "Grouping"], ["spill", "Spill"], ["balance", "Balance"], ["ac-setup", "AC Setup"], ["general", "General"], ["service", "Service"]];
+  const SUPPORT_SERVICE_VIEW = ["diagnostics", "Support"];
 
   async function load() {
     error = "";
     try {
-      [health, snapshot] = await Promise.all([
+      const [healthPayload, statePayload, eventsPayload] = await Promise.all([
         fetchJson("health"),
-        fetchJson("state")
+        fetchJson("state"),
+        fetchJson("events").catch(() => ({events: []}))
       ]);
+      health = healthPayload;
+      snapshot = statePayload;
+      if (Array.isArray(eventsPayload.events)) busEvents = eventsPayload.events.slice(-200);
       keepSelectedAcValid();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
+  }
+
+  function setBusEvents(events) {
+    busEvents = Array.isArray(events) ? events.slice(-200) : [];
+  }
+
+  function appendBusEvents(events) {
+    if (!Array.isArray(events) || !events.length) return;
+    busEvents = [...busEvents, ...events].slice(-200);
   }
 
   function connectSocket() {
@@ -63,6 +126,13 @@
     socket.addEventListener("message", (event) => {
       try {
         const message = JSON.parse(event.data);
+        if ((message.type === "hello" || message.type === "state") && Array.isArray(message.events)) {
+          setBusEvents(message.events);
+        } else if (message.type === "events" && Array.isArray(message.events)) {
+          appendBusEvents(message.events);
+        } else if (message.type === "event" && message.event) {
+          appendBusEvents([message.event]);
+        }
         if (message.health) health = message.health;
         if (message.state) {
           snapshot = message.state;
@@ -102,103 +172,51 @@
   }
 
   function configuredModes(settings) {
-    const flags = settings?.modes || {};
-    const configured = MODE_OPTIONS.filter(([_value, _label, key]) => flags[key] === true);
-    return configured.length ? configured : MODE_OPTIONS;
+    return selectConfiguredModes(settings);
   }
 
   function configuredFans(settings) {
-    const values = settings?.fan_values || {};
-    const hasValues = Object.keys(values).length > 0;
-    const candidates = [
-      ["auto", "Auto", 0],
-      ["quiet", "Quiet", null],
-      ["low", "Low", 1],
-      ["medium", "Med", 2],
-      ["high", "High", 3],
-      ["powerful", "Powerful", null],
-      ["turbo", "Turbo", null]
-    ];
-    const seen = new Set();
-    const options = [];
-    for (const [key, label, fallback] of candidates) {
-      const raw = finite(values[key]);
-      const value = raw ?? fallback;
-      if (raw === null && hasValues) continue;
-      if (value === null || value < 0 || value > 6 || seen.has(value)) continue;
-      seen.add(value);
-      options.push([value, label, key]);
-    }
-    return options.length ? options : [[0, "Auto"], [1, "Low"], [2, "Med"], [3, "High"]];
+    return selectConfiguredFans(settings);
   }
 
   function acName(id, ac) {
-    return ac?.base?.name || `AC ${Number(id) + 1}`;
+    return selectAcName(id, ac);
   }
 
   function configuredAcEntries(entries) {
-    const declaredCount = finite(system.ac_count);
-    const filtered = entries.filter(([id, ac]) => {
-      const numeric = finite(id);
-      if (numeric === null) return false;
-      if (declaredCount !== null && declaredCount > 0) {
-        return numeric >= 0 && numeric < declaredCount;
-      }
-      const groupCount = finite(ac?.base?.group_count);
-      return groupCount === null || groupCount > 0;
-    });
-    return filtered.length ? filtered : entries;
+    return selectConfiguredAcEntries(entries, system);
   }
 
   function groupIsConfigured(group) {
-    return !!(group?.status || group?.name || group?.name_record || group?.grouping);
+    return selectGroupIsConfigured(group);
   }
 
   function groupIsSpill(group) {
-    return group?.spill_configured === true || String(group?.name || "").toLowerCase() === "spill" || group?.status?.spill_on === true;
+    return selectGroupIsSpill(group);
   }
 
   function groupIsOn(group) {
-    const status = group?.status || {};
-    return status.power_name === "on" || status.power_name === "turbo" || status.power_code === 1;
+    return selectGroupIsOn(group);
   }
 
   function groupBadges(group) {
-    const status = group?.status || {};
-    const badges = [];
-    if (groupIsSpill(group)) badges.push("Spill");
-    if (status.low_battery) badges.push("Battery");
-    if (status.timer_on) badges.push("Program");
-    if (status.power_name === "turbo") badges.push("Turbo");
-    return badges.slice(0, 3);
+    return selectGroupBadges(group);
   }
 
   function zoneName(id, group) {
-    return group?.name || group?.name_record?.name || `Zone ${Number(id) + 1}`;
+    return selectZoneName(id, group);
   }
 
   function groupEntriesForAc(ac, {includeSpill = false} = {}) {
-    const base = ac?.base || {};
-    const start = finite(base.group_start) ?? 0;
-    const count = finite(base.group_count);
-    const includeGroup = (group) => groupIsConfigured(group) && (includeSpill || !groupIsSpill(group));
-    if (count === null) {
-      return groupEntries.filter(([_id, group]) => includeGroup(group));
-    }
-    const end = start + count;
-    return groupEntries.filter(([id, group]) => {
-      const numeric = Number(id);
-      return numeric >= start && numeric < end && includeGroup(group);
-    });
+    return selectGroupEntriesForAc(ac, groupEntries, {includeSpill});
   }
 
   function activeZoneEntriesForAc(ac) {
-    return groupEntriesForAc(ac, {includeSpill: false});
+    return selectActiveZoneEntriesForAc(ac, groupEntries);
   }
 
   function average(values) {
-    const clean = values.map(finite).filter((value) => value !== null);
-    return clean.length ? clean.reduce((total, value) => total + value, 0) / clean.length : null;
+    return selectAverage(values);
   }
 
   function firstFinite(...values) {
@@ -214,33 +232,19 @@
   }
 
   function zoneRoomTemperature(id, group) {
-    const status = group?.status || {};
-    return firstFinite(status.temperature, status.current_temp, status.sensor_temp);
+    return selectZoneRoomTemperature(id, group);
   }
 
   function firstSensorName(zones) {
-    const withSensor = zones.find(([_id, group]) => group?.status?.has_sensor);
-    return withSensor?.[1]?.grouping?.thermostat_name || (withSensor ? `${zoneName(withSensor[0], withSensor[1])} Sensor` : "Room Sensor");
+    return selectFirstSensorName(zones);
   }
 
   function activeRoomName(zones) {
-    const active = zones.find(([_id, group]) => groupIsOn(group));
-    return active ? zoneName(active[0], active[1]) : zoneName(zones[0]?.[0] ?? 0, zones[0]?.[1] || {});
+    return selectActiveRoomName(zones);
   }
 
   function thermostatFor(ac, zones) {
-    const status = ac?.status || {};
-    const settings = ac?.settings || {};
-    const sensorZones = zones.map(([_id, group]) => group?.status || {}).filter((item) => item.has_sensor);
-    const activeSensorZones = sensorZones.filter((item) => item.sensor_control && (item.power_code === 1 || item.power_name === "on"));
-    const current = finite(status.sensor_temp) ?? average(sensorZones.map((item) => item.temperature));
-    const setpoint = average(activeSensorZones.map((item) => item.setpoint)) ?? finite(status.setpoint);
-    return {
-      min: finite(settings.min_setpoint) ?? 16,
-      max: finite(settings.max_setpoint) ?? 30,
-      current,
-      setpoint
-    };
+    return selectThermostatFor(ac, zones);
   }
 
   function acSourceHint(ac, zones, thermostat) {
@@ -399,33 +403,7 @@
   }
 
   function temperatureChart(zones, thermostat, status, adaptiveState, acId) {
-    const activeZoneCount = zones.filter(([_id, group]) => groupIsOn(group)).length;
-    const historyEntries = aggregateTemperatureHistory(zones, thermostat);
-    const suppliedPlan = availableTemperaturePlan(adaptiveState, acId, zones);
-    const fallbackPlanEntries = plannedTemperatureEntries(historyEntries, thermostat, status, activeZoneCount);
-    const planEntries = suppliedPlan?.entries?.length ? suppliedPlan.entries : fallbackPlanEntries;
-    const planSeries = historyEntries.length && planEntries.length ? [historyEntries.at(-1), ...planEntries] : [];
-    const current = finite(historyEntries.at(-1)?.temperature) ?? finite(thermostat?.current);
-    const callActive = suppliedPlan?.entries?.length ? suppliedPlan.callActive : thermalCallActive(current, finite(thermostat?.setpoint), status);
-    const values = [...historyEntries, ...planEntries].map((entry) => finite(entry?.temperature)).filter((value) => value !== null);
-    const setpoint = firstFinite(suppliedPlan?.setpoint, thermostat?.setpoint);
-    if (setpoint !== null) values.push(setpoint);
-    if (!values.length) {
-      return {historyEntries, planEntries, historyPath: "", planPath: "", setpointPath: "", callAreaPath: "", callLabel: "No active zone demand"};
-    }
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const pad = Math.max(0.4, (max - min) * 0.18);
-    const domain = {min: min - pad, max: max + pad};
-    const total = historyEntries.length + planEntries.length;
-    const historyPath = temperatureChartPath(historyEntries, domain, 0, total);
-    const planPath = temperatureChartPath(planSeries, domain, Math.max(0, historyEntries.length - 1), total);
-    const setpointY = setpoint === null ? null : 24 - ((setpoint - domain.min) / Math.max(1, domain.max - domain.min)) * 18;
-    const setpointPath = setpointY === null ? "" : `M0 ${setpointY.toFixed(1)} L120 ${setpointY.toFixed(1)}`;
-    const callStart = callActive && planEntries.length ? ((Math.max(0, historyEntries.length - 1) / Math.max(1, total - 1)) * 120) : null;
-    const callAreaPath = callStart === null ? "" : `M${callStart.toFixed(1)} 3 L120 3 L120 27 L${callStart.toFixed(1)} 27 Z`;
-    const callLabel = suppliedPlan?.label || (callActive ? "AC call plan" : activeZoneCount ? "Zone plan" : "No active zone demand");
-    return {historyEntries, planEntries, historyPath, planPath, setpointPath, callAreaPath, callLabel};
+    return selectTemperatureChart(zones, thermostat, status, adaptiveState, acId);
   }
 
   function keepSelectedAcValid() {
@@ -472,14 +450,7 @@
   }
 
   function groupsFromBitmap(low = 0, high = 0) {
-    const groups = [];
-    for (let index = 0; index < 8; index += 1) {
-      if (Number(low) & (1 << index)) groups.push(index);
-    }
-    for (let index = 0; index < 8; index += 1) {
-      if (Number(high) & (1 << index)) groups.push(index + 8);
-    }
-    return groups;
+    return selectGroupsFromBitmap(low, high);
   }
 
   function bitmapFromGroups(groupIds) {
@@ -487,22 +458,11 @@
   }
 
   function splitGroupBitmap(groupIds) {
-    const low = [];
-    const high = [];
-    groupIds.forEach((group) => {
-      if (group < 8) low.push(group);
-      else high.push(group - 8);
-    });
-    return {
-      groups_1_8_bitmap: bitmapFromGroups(low),
-      groups_9_16_bitmap: bitmapFromGroups(high)
-    };
+    return selectSplitGroupBitmap(groupIds);
   }
 
   function checkedValues(card, selector) {
-    return Array.from(card.querySelectorAll(selector))
-      .filter((input) => input.checked)
-      .map((input) => Number(input.value ?? input.dataset.group ?? input.dataset.favouriteGroup));
+    return buildCheckedValues(card, selector);
   }
 
   function timeText(timer = {}) {
@@ -519,13 +479,7 @@
   }
 
   function timerFromCard(card, prefix) {
-    const value = card.querySelector(`[data-field="${prefix}-time"]`)?.value || "00:00";
-    const [hour, minute] = value.split(":").map((item) => Number(item));
-    return {
-      enabled: card.querySelector(`[data-field="${prefix}-enabled"]`)?.value === "true",
-      hour: Number.isFinite(hour) ? hour : 0,
-      minute: Number.isFinite(minute) ? minute : 0
-    };
+    return buildTimerFromCard(card, prefix);
   }
 
   function programRecordsFromState() {
@@ -558,13 +512,11 @@
 
   function saveFavourite(event, id) {
     const card = event.currentTarget.closest("[data-favourite-card]");
-    const groups = checkedValues(card, "[data-favourite-group]");
-    const name = card.querySelector('[data-field="favourite-name"]')?.value || "";
-    sendCommand("favourite", {favourite: Number(id), name, groups}, `favourite-save-${id}`);
+    sendCommand("favourite", favouritePayload(card, id), `favourite-save-${id}`);
   }
 
   function clearFavourite(id) {
-    sendCommand("favourite", {favourite: Number(id), name: "", groups: []}, `favourite-clear-${id}`);
+    sendCommand("favourite", clearFavouritePayload(id), `favourite-clear-${id}`);
   }
 
   function applyFavourite(id) {
@@ -573,80 +525,21 @@
 
   function saveProgram(event, id) {
     const card = event.currentTarget.closest("[data-program]");
-    const records = programRecordsFromState();
-    const programNumber = Number(id);
-    const record = records.find((item) => Number(item.program) === programNumber) || {program: programNumber};
-    record.name = card.querySelector('[data-field="program-name"]')?.value || "";
-    record.enabled = card.querySelector('[data-field="program-enabled"]')?.value === "true";
-    record.days_bitmap = bitmapFromGroups(checkedValues(card, "[data-program-day]"));
-    Object.assign(record, splitGroupBitmap(checkedValues(card, "[data-program-zone]")));
-    record.active_ac_bitmap = bitmapFromGroups(checkedValues(card, "[data-program-ac]"));
-    record.on_setpoint = Number(card.querySelector('[data-field="program-on-setpoint"]')?.value || 26);
-    record.on_timer = timerFromCard(card, "on");
-    record.off_timer = timerFromCard(card, "off");
-    if (!records.some((item) => Number(item.program) === programNumber)) records.push(record);
-    sendCommand("program_define_new", {
-      program_count: Number(system.program_count ?? records.length),
-      linked_ac: !!system.programs_linked_ac,
-      records
-    }, `program-save-${id}`);
+    sendCommand("program_define_new", programPayload(card, id, programs, system), `program-save-${id}`);
   }
 
   function clearProgram(id) {
-    const records = programRecordsFromState();
-    const programNumber = Number(id);
-    const index = records.findIndex((item) => Number(item.program) === programNumber);
-    const cleared = {
-      program: programNumber,
-      enabled: false,
-      days_bitmap: 0,
-      name: "",
-      groups_1_8_bitmap: 0,
-      groups_9_16_bitmap: 0,
-      active_ac_bitmap: 0,
-      on_timer: {enabled: false, hour: 0, minute: 0},
-      on_setpoint: 26,
-      off_timer: {enabled: false, hour: 0, minute: 0}
-    };
-    if (index >= 0) records[index] = cleared;
-    else records.push(cleared);
-    sendCommand("program_define_new", {
-      program_count: Number(system.program_count ?? records.length),
-      linked_ac: !!system.programs_linked_ac,
-      records
-    }, `program-clear-${id}`);
+    sendCommand("program_define_new", clearProgramPayload(id, programs, system), `program-clear-${id}`);
   }
 
   function saveAcTimer(event, id) {
     const card = event.currentTarget.closest("[data-ac-timer]");
-    const records = acTimerRecordsFromState();
-    const ac = Number(id);
-    const record = records.find((item) => Number(item.ac) === ac) || {ac};
-    record.on_timer = timerFromCard(card, "on");
-    record.off_timer = timerFromCard(card, "off");
-    if (!records.some((item) => Number(item.ac) === ac)) records.push(record);
-    sendCommand("ac_timer_table", {records, ac_count: records.length || 4}, `ac-timer-${id}`);
+    sendCommand("ac_timer_table", acTimerPayload(card, id, acEntries), `ac-timer-${id}`);
   }
 
   async function sendAdaptiveConfig(event) {
     const card = event.currentTarget.closest("[data-adaptive-config]");
-    const controlZones = checkedValues(card, "[data-adaptive-control-zone]");
-    const outsideAirZones = checkedValues(card, "[data-adaptive-outside-air-zone]");
-    const payload = {
-      mode: card.querySelector("#adaptive-mode")?.value || "off",
-      control_strategy: card.querySelector("#adaptive-control-strategy")?.value || "weather_setpoint",
-      cool_diff: Number(card.querySelector("#adaptive-cool-diff")?.value || 4),
-      cool_comfort_temp: Number(card.querySelector("#adaptive-cool-comfort-temp")?.value || 24),
-      heat_diff: Number(card.querySelector("#adaptive-heat-diff")?.value || 4),
-      heat_comfort_temp: Number(card.querySelector("#adaptive-heat-comfort-temp")?.value || 20),
-      check_interval: Number(card.querySelector("#adaptive-check-interval")?.value || 60),
-      command_cooldown: Number(card.querySelector("#adaptive-command-cooldown")?.value || 300),
-      mpc_horizon_hours: Number(card.querySelector("#adaptive-mpc-horizon-hours")?.value || 6),
-      compressor_min_run_time: Number(card.querySelector("#adaptive-compressor-min-run-time")?.value || 0),
-      compressor_min_off_time: Number(card.querySelector("#adaptive-compressor-min-off-time")?.value || 0),
-      control_zones: controlZones,
-      outside_air_zones: outsideAirZones
-    };
+    const payload = adaptiveConfigPayload(card);
     pendingKey = "adaptive-save";
     error = "";
     try {
@@ -803,49 +696,18 @@
   }
 
   function sensorRowsFromState() {
-    const stateRows = sensorViewRows();
-    if (stateRows.length) return stateRows;
-
-    const rows = [];
-    const sensorList = system.sensor_list || {};
-    const addresses = sensorList.sensor_addresses || system.sensor_addresses || [];
-    for (const address of addresses) {
-      const mappedGroups = groupEntries
-        .filter(([_id, group]) => Number(group?.grouping?.thermostat) === Number(address) || group?.grouping?.thermostat_name === `rf_sensor_${address}`)
-        .map(([id]) => Number(id) + 1);
-      const matchingGroup = groupEntries.find(([_id, group]) => Number(group?.grouping?.thermostat) === Number(address));
-      rows.push({
-        id: address,
-        address: typeof address === "number" ? `0x${Number(address).toString(16).toUpperCase()}` : String(address),
-        name: typeof address === "number" && address >= 144 ? `Touchpad ${address - 143}` : `Sensor ${address}`,
-        kind: typeof address === "number" && address >= 144 ? "touchpad" : "rf",
-        temperature: matchingGroup?.[1]?.status?.temperature,
-        mapped_groups: mappedGroups,
-        present: true
-      });
-    }
-    for (const supply of system.supply_air || []) {
-      rows.push({
-        id: `supply-${supply.ac}`,
-        address: `AC ${Number(supply.ac) + 1}`,
-        name: `Supply Air ${Number(supply.ac) + 1}`,
-        kind: "supply_air",
-        temperature: supply.temperature,
-        present: supply.status !== "disabled"
-      });
-    }
-    return rows;
+    return selectSensorRowsFromState({rootState, system, groupEntries});
   }
 
   function sensorKindLabel(kind) {
-    return {rf: "RF Sensor", touchpad: "Touchpad", supply_air: "Supply Air"}[kind] || title(kind || "sensor");
+    return selectSensorKindLabel(kind);
   }
 
   function saveSensorTemperature(event, sensor) {
     const card = event.currentTarget.closest("[data-sensor-row]");
-    const temperature = Number(card.querySelector("[data-sensor-temperature]")?.value);
-    if (!Number.isFinite(temperature)) return;
-    sendCommand("sensor_temperature", {sensor: Number(sensor), temperature}, `sensor-temperature-${sensor}`);
+    const payload = sensorTemperaturePayload(card, sensor);
+    if (!payload) return;
+    sendCommand("sensor_temperature", payload, `sensor-temperature-${sensor}`);
   }
 
   function pairSensor(pairing) {
@@ -854,39 +716,21 @@
 
   function saveGrouping(event, id) {
     const card = event.currentTarget.closest("[data-service-group]");
-    sendCommand("grouping", {
-      group: Number(id),
-      zone_start: Number(card.querySelector('[data-field="zone-start"]')?.value || 0),
-      zone_count: Number(card.querySelector('[data-field="zone-count"]')?.value || 1),
-      min_percent: Number(card.querySelector('[data-field="min-percent"]')?.value || 0),
-      thermostat: Number(card.querySelector('[data-field="thermostat"]')?.value || 255)
-    }, `grouping-${id}`);
+    sendCommand("grouping", groupingPayload(card, id), `grouping-${id}`);
   }
 
   function saveGroupName(event, id) {
     const card = event.currentTarget.closest("[data-service-group]");
-    sendCommand("group_name", {
-      group: Number(id),
-      name: card.querySelector('[data-field="group-name"]')?.value || ""
-    }, `group-name-${id}`);
+    sendCommand("group_name", groupNamePayload(card, id), `group-name-${id}`);
   }
 
   function saveSpill(event) {
     const card = event.currentTarget.closest("[data-spill-card]");
-    const spill_groups = checkedValues(card, "[data-spill-group]");
-    const ac_spill_types = Array.from(card.querySelectorAll("[data-spill-ac]"))
-      .sort((a, b) => Number(a.dataset.spillAc) - Number(b.dataset.spillAc))
-      .map((select) => Number(select.value));
-    sendCommand("spill", {spill_groups, ac_spill_types}, "spill");
+    sendCommand("spill", spillPayload(card), "spill");
   }
 
   function balanceValuesFromPage() {
-    const values = Array(16).fill(0);
-    document.querySelectorAll("[data-balance-number]").forEach((input) => {
-      const zone = Number(input.dataset.balanceNumber);
-      if (zone >= 0 && zone < values.length) values[zone] = Number(input.value);
-    });
-    return values;
+    return buildBalanceValuesFromPage(document);
   }
 
   function balanceAction(action) {
@@ -895,51 +739,22 @@
 
   function stepBalance(event, id, delta) {
     const card = event.currentTarget.closest("[data-balance-zone]");
-    const input = card.querySelector("[data-balance-number]");
-    input.value = String(clamp(Number(input.value || 0) + delta, 0, 255));
+    stepBalanceInput(card, delta);
   }
 
   function savePreference(event) {
     const card = event.currentTarget.closest("[data-preference-card]");
-    sendCommand("preference", {
-      system_name: card.querySelector("#system-name-input")?.value || system.system_name || "",
-      show_ac_errors: card.querySelector('[data-field="show-ac-errors"]')?.value === "true",
-      show_outside_temp: card.querySelector('[data-field="pref-show-outside-temp"]')?.value === "true",
-      show_control_sensor: card.querySelector('[data-field="pref-show-control-sensor"]')?.value === "true",
-      use_fahrenheit: card.querySelector('[data-field="use-fahrenheit"]')?.value === "true",
-      location: Number(card.querySelector('[data-field="location"]')?.value || system.address_or_location || 0),
-      screensaver_enabled: card.querySelector('[data-field="screensaver-enabled"]')?.value === "true",
-      screensaver_timeout: Number(card.querySelector('[data-field="screensaver-timeout"]')?.value || 0)
-    }, "preference");
+    sendCommand("preference", preferencePayload(card, system), "preference");
   }
 
   function saveParameters(event) {
     const card = event.currentTarget.closest("[data-parameters-card]");
-    sendCommand("parameters", {
-      group_count: Number(card.querySelector('[data-field="group-count"]')?.value || groupEntries.length || 1),
-      damper_rpm: Number(card.querySelector('[data-field="damper-rpm"]')?.value || system.damper_rpm || 100),
-      touchpad_1_location: Number(card.querySelector('[data-field="touchpad-1-location"]')?.value || 255),
-      touchpad_2_location: Number(card.querySelector('[data-field="touchpad-2-location"]')?.value || 255),
-      ac_button_blocked: card.querySelector('[data-field="ac-button-blocked"]')?.value === "true",
-      show_outside_temp: card.querySelector('[data-field="param-show-outside-temp"]')?.value === "true",
-      lock_to_temp_control: card.querySelector('[data-field="lock-to-temp-control"]')?.value === "true",
-      show_control_sensor: card.querySelector('[data-field="param-show-control-sensor"]')?.value === "true"
-    }, "parameters");
+    sendCommand("parameters", parametersPayload(card, system, groupEntries), "parameters");
   }
 
   function saveService(event) {
     const card = event.currentTarget.closest("[data-service-system]");
-    sendCommand("service", {
-      company: card.querySelector("#service-company-input")?.value || "",
-      phone: card.querySelector("#service-phone-input")?.value || "",
-      show_service_due: card.querySelector('[data-field="show-service-due"]')?.value === "true",
-      service_due_locked: card.querySelector('[data-field="service-due-locked"]')?.value === "true",
-      filter_clean_due: card.querySelector('[data-field="filter-clean-due"]')?.value === "true",
-      maintenance_due: card.querySelector('[data-field="maintenance-due"]')?.value === "true",
-      months: Number(card.querySelector('[data-field="service-months"]')?.value || 0),
-      days: Number(card.querySelector('[data-field="service-days"]')?.value || 0),
-      runtime_hours: Number(card.querySelector('[data-field="service-runtime-hours"]')?.value || 0)
-    }, "service");
+    sendCommand("service", servicePayload(card), "service");
   }
 
   function applyThemePreference(theme = selectedTheme) {
@@ -953,6 +768,12 @@
     selectedTheme = ["system", "light", "dark"].includes(theme) ? theme : "system";
     localStorage.setItem("airtouch4.uiTheme", selectedTheme);
     applyThemePreference(selectedTheme);
+  }
+
+  function setShowSupportDiagnostics(value) {
+    showSupportDiagnostics = !!value;
+    localStorage.setItem("airtouch4.showSupportDiagnostics", showSupportDiagnostics ? "true" : "false");
+    if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
   }
 
   function acBaseRecordsFromState() {
@@ -987,18 +808,9 @@
 
   function saveAcBase(event, id) {
     const card = event.currentTarget.closest("[data-service-ac]");
-    const records = acBaseRecordsFromState();
-    const record = records.find((item) => Number(item.ac) === Number(id));
-    if (!record) return;
-    record.name = card.querySelector('[data-field="ac-name"]')?.value || record.name;
-    record.group_start = Number(card.querySelector('[data-field="ac-group-start"]')?.value || 0);
-    record.group_count = Number(card.querySelector('[data-field="ac-group-count"]')?.value || 0);
-    record.brand = Number(card.querySelector('[data-field="ac-brand"]')?.value || record.brand || 0);
-    sendCommand("ac_base_info", {
-      one_duct_system: !!system.one_duct_system,
-      ac_count: records.length,
-      records
-    }, `ac-base-${id}`);
+    const payload = acBasePayload(card, id, acEntries, system);
+    if (!payload) return;
+    sendCommand("ac_base_info", payload, `ac-base-${id}`);
   }
 
   function applyAcSettingsCard(record, card) {
@@ -1040,35 +852,20 @@
 
   function saveAcSettings(event, id) {
     const card = event.currentTarget.closest("[data-service-ac]");
-    const records = acSettingRecordsFromState();
-    const record = records.find((item) => Number(item.ac) === Number(id));
-    if (!record) return;
-    applyAcSettingsCard(record, card);
-    sendCommand("ac_setting_new", {records}, `ac-settings-${id}`);
+    const payload = acSettingsPayload(card, id, acEntries);
+    if (!payload) return;
+    sendCommand("ac_setting_new", payload, `ac-settings-${id}`);
   }
 
   function resetTempOffsets(event, id) {
     const card = event.currentTarget.closest("[data-service-ac]");
-    const cool = card.querySelector('[data-field="cool-adjust"]');
-    const heat = card.querySelector('[data-field="heat-adjust"]');
-    if (cool) cool.value = 0;
-    if (heat) heat.value = 0;
+    resetTempOffsetInputs(card);
     saveAcSettings(event, id);
   }
 
   function saveTurboGroup(event, id) {
     const card = event.currentTarget.closest("[data-service-ac]");
-    const current_groups = [];
-    for (const record of system.turbo_group?.records || []) {
-      current_groups[Number(record.ac)] = record.group === null || record.group === undefined ? 255 : Number(record.group);
-    }
-    sendCommand("turbo_group", {
-      ac: Number(id),
-      group: Number(card.querySelector('[data-field="turbo-group"]')?.value || 255),
-      current_groups,
-      one_duct_system: !!system.one_duct_system,
-      ac_count: Math.max(1, acEntries.length)
-    }, `turbo-group-${id}`);
+    sendCommand("turbo_group", turboGroupPayload(card, id, system, acEntries), `turbo-group-${id}`);
   }
 
   function setAcPower(on) {
@@ -1084,14 +881,7 @@
   }
 
   function zonePayload(id, group, on) {
-    const status = group?.status || {};
-    return {
-      group: Number(id),
-      on,
-      sensor_control: status.sensor_control !== false,
-      setpoint: finite(status.setpoint) ?? 24,
-      percentage: finite(status.percentage) ?? 100
-    };
+    return buildZonePayload(id, group, on);
   }
 
   function setZonePower(id, group, on) {
@@ -1120,6 +910,7 @@
 
   onMount(() => {
     selectedTheme = localStorage.getItem("airtouch4.uiTheme") || controller.config?.ui_theme || "system";
+    showSupportDiagnostics = localStorage.getItem("airtouch4.showSupportDiagnostics") === "true";
     applyThemePreference(selectedTheme);
     load();
     connectSocket();
@@ -1183,16 +974,8 @@
   $: adaptiveEnvironment = environmentIntent();
   $: adaptiveZoneIntent = zoneIntent();
   $: adaptiveHybridIntent = hybridIntent();
-  $: runtimeMetrics = [
-    adaptiveMetric("Protocol", runtime.protocol_name || title(runtime.protocol || "at4")),
-    adaptiveMetric("Service", title(controller.status || "unknown")),
-    adaptiveMetric("Transport", title(controller.config?.transport || "-")),
-    adaptiveMetric("Endpoint", controller.config?.transport === "tcp_serial" ? `${controller.config?.tcp_host}:${controller.config?.tcp_port}` : controller.config?.port),
-    adaptiveMetric("Address", runtime.src),
-    adaptiveMetric("Boot", runtime.boot_complete ? "Complete" : "Pending"),
-    adaptiveMetric("RX / TX", `${runtime.rx_count || 0} / ${runtime.tx_count || 0}`),
-    adaptiveMetric("Transactions", `${transactions.completed?.length || 0} OK, ${transactions.failed?.length || 0} Fail`)
-  ];
+  $: serviceViews = showSupportDiagnostics ? [...BASE_SERVICE_VIEWS, SUPPORT_SERVICE_VIEW] : BASE_SERVICE_VIEWS;
+  $: if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
 </script>
 
 <main class="touch-shell" style={modeStyle} data-mode={currentModeKey} data-view={activeView}>
@@ -1298,19 +1081,24 @@
       />
     {:else}
       <SettingsView
-        options={SERVICE_VIEWS}
+        options={serviceViews}
         {activeServiceView}
         {runtime}
+        {socketState}
         {selectedTheme}
+        {showSupportDiagnostics}
         {system}
-        {runtimeMetrics}
+        {service}
+        {controller}
+        {transactions}
+        {busEvents}
         {sensorRows}
         {groupEntries}
         {selectedGroupEntries}
         {acEntries}
         {balanceRows}
-        {rootState}
         {setTheme}
+        {setShowSupportDiagnostics}
         {savePreference}
         {pairSensor}
         {sensorKindLabel}
