@@ -9,6 +9,7 @@ from airtouch4.payloads.common import (
     parse_internal_temperature,
 )
 from airtouch4.payloads.internal_status import decode_touchpad_temperature
+from airtouch4.payloads.ui_config import decode_main_display_new
 
 
 class InternalTemperatureTests(unittest.TestCase):
@@ -39,6 +40,18 @@ class InternalTemperatureTests(unittest.TestCase):
         self.assertEqual(decoded["payload_encoding"], "apk_touchpad_short_le")
         self.assertEqual(decoded["heartbeat_raw"], 220)
         self.assertEqual(decoded["temperature"], 25.0)
+
+    def test_main_display_new_uses_apk_sign_record_layout(self) -> None:
+        decoded = decode_main_display_new(bytes.fromhex(
+            "80 00 00 00 60 00 E1 00 01 00 80 00 02 00 80 00 03 00 80 00"
+        ))
+
+        self.assertEqual(decoded["active_favourite"], 0x80)
+        self.assertEqual(decoded["record_count"], 4)
+        self.assertEqual(decoded["records"][0]["ac"], 0)
+        self.assertEqual(decoded["records"][0]["sign_sensor"], 0xE1)
+        self.assertEqual(decoded["records"][0]["sign_group"], 1)
+        self.assertEqual(decoded["records"][0]["sign_group_ui_zone"], 2)
 
 
 if __name__ == "__main__":
