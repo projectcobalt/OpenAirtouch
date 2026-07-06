@@ -60,7 +60,7 @@
 
   function calibrationText(value) {
     const number = Number(value);
-    return Number.isFinite(number) ? tempText(number, 1) : "-";
+    return Number.isFinite(number) ? tempText(number) : "-";
   }
 
   function calibrationPercent(value) {
@@ -75,7 +75,7 @@
     const target = input?.value || calibrationTarget;
     const confirmed = await confirmAction({
       title: "Save Calibration",
-      message: `${apkSensorName(selectedSensor)} will be saved as ${calibrationText(target)}. Current reading is ${tempText(selectedSensor.temperature, 1)}.`,
+      message: `${apkSensorName(selectedSensor)} will be saved as ${calibrationText(target)}. Current reading is ${tempText(selectedSensor.temperature)}.`,
       confirmLabel: "Save Calibration"
     });
     if (confirmed) saveSensorTemperature(card, selectedSensor.id);
@@ -121,7 +121,7 @@
       </div>
       <div class="field-grid sensor-info-grid">
         <div class="info-field"><span>Zone</span><strong>{selectedSensor.mapped_groups?.length ? selectedSensor.mapped_groups.join(", ") : "-"}</strong></div>
-        <div class="info-field"><span>Temp</span><strong>{selectedSensor.temperature === undefined || selectedSensor.temperature === null ? "-" : tempText(selectedSensor.temperature, 1)}</strong></div>
+        <div class="info-field"><span>Temp</span><strong>{selectedSensor.temperature === undefined || selectedSensor.temperature === null ? "-" : tempText(selectedSensor.temperature)}</strong></div>
         <div class="info-field"><span>Name</span><strong>{apkSensorName(selectedSensor)}</strong></div>
         <div class="info-field"><span>Address</span><strong>{selectedSensor.address}</strong></div>
         <div class="info-field"><span>Status</span><strong>{display(selectedSensor.status)}</strong></div>

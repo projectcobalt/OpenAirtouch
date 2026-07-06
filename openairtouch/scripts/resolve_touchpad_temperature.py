@@ -17,20 +17,20 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from airtouch4.payloads.common import encode_internal_temperature
+from airtouch4.payloads.common import encode_touchpad_heartbeat_payload
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sensor", default="", help="Optional Home Assistant sensor entity ID.")
-    parser.add_argument("--fallback", type=float, default=25.0, help="Fallback temperature in degrees C.")
+    parser.add_argument("--fallback", type=float, default=23.0, help="Fallback temperature in degrees C.")
     parser.add_argument("--raw-payload", default="", help="Optional raw heartbeat payload override.")
     parser.add_argument("--timeout", type=float, default=3.0)
     return parser
 
 
 def heartbeat_payload_for_temperature(temperature: float) -> str:
-    return f"00 {encode_internal_temperature(temperature):02X} 00"
+    return encode_touchpad_heartbeat_payload(temperature).hex(" ").upper()
 
 
 def read_sensor_state(entity_id: str, *, timeout: float = 3.0) -> float:

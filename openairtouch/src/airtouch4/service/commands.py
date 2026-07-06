@@ -14,7 +14,9 @@ class CommandRequestError(ValueError):
 
 def build_transaction(action: str, data: dict[str, Any], *, state: dict[str, Any] | None = None) -> TransactionSpec:
     """Build a runtime transaction from a UI/API command intent."""
-    _validate_smart_limits(action, data, state or {})
+    state = state or {}
+    data = _hydrate_ac_status(action, data, state)
+    _validate_smart_limits(action, data, state)
     spec = _build_command_spec(action, data)
     return TransactionSpec.from_command(spec, name=action)
 
@@ -145,7 +147,8 @@ def _build_command_spec(action: str, data: dict[str, Any]) -> commands.CommandSp
         if action == "balance_stop":
             return commands.balance_stop_command(_optional_int_list(data, "current_values"))
         if action == "sensor_temperature":
-            temperature = _optional_int(data, "temperature")
+            temperature_value = _optional_number(data, "temperature")
+            temperature = None if temperature_value is None else int(round(temperature_value))
             if temperature is None:
                 raw_temperature = _int(data, "encoded_temperature")
                 temperature = raw_temperature - 256 if raw_temperature > 127 else raw_temperature
@@ -176,6 +179,18 @@ def _optional_int(data: dict[str, Any], key: str) -> int | None:
     return _int(data, key)
 
 
+def _optional_number(data: dict[str, Any], key: str) -> float | None:
+    if key not in data or data[key] is None:
+        return None
+    value = data[key]
+    if isinstance(value, bool):
+        raise CommandRequestError(f"{key} must be a number")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise CommandRequestError(f"{key} must be a number") from exc
+
+
 def _bool(data: dict[str, Any], key: str) -> bool:
     if key not in data:
         raise CommandRequestError(f"missing required field: {key}")
@@ -198,6 +213,24 @@ def _coerce_bool(value: Any, key: str) -> bool:
         if lowered in {"false", "off", "no", "0"}:
             return False
     raise CommandRequestError(f"{key} must be a boolean")
+
+
+def _hydrate_ac_status(action: str, data: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    if action != "ac_status" or not state:
+        return data
+    ac = _int(data, "ac")
+    status = _ac_status(state, ac)
+    if not status:
+        return data
+    hydrated = dict(data)
+    for key in ("mode", "fan", "setpoint"):
+        if key not in hydrated or hydrated[key] is None:
+            value = status.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                hydrated[key] = int(value)
+    return hydrated
 
 
 def _group_control_value(data: dict[str, Any], sensor_control: bool) -> int:
@@ -279,6 +312,14 @@ def _ac_setpoint_limits(state: dict[str, Any], ac: int) -> tuple[int, int] | Non
     if not isinstance(minimum, int) or not isinstance(maximum, int) or minimum > maximum:
         return None
     return max(4, minimum), min(35, maximum)
+
+
+def _ac_status(state: dict[str, Any], ac: int) -> dict[str, Any] | None:
+    record = _indexed(state.get("acs") or {}, ac)
+    if not isinstance(record, dict):
+        return None
+    status = record.get("status") or {}
+    return status if isinstance(status, dict) else None
 
 
 def _ac_for_group(state: dict[str, Any], group: int) -> int | None:

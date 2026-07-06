@@ -38,7 +38,7 @@ options:
   detect_seconds: 3.0
   heartbeat_interval: 30.0
   touchpad_temperature_sensor: ""
-  touchpad_temperature: 25.0
+  touchpad_temperature: 23.0
   heartbeat_payload: ""
   ui_theme: system
   bus_log: false

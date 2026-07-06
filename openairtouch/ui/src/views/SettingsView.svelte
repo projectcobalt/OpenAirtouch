@@ -28,6 +28,7 @@
   export let setTheme = () => {};
   export let setShowSupportDiagnostics = () => {};
   export let savePreference = () => {};
+  export let saveRuntimeConfig = () => {};
   export let pairSensor = () => {};
   export let sensorKindLabel = () => "Sensor";
   export let saveSensorTemperature = () => {};
@@ -44,6 +45,7 @@
   export let saveTurboGroup = () => {};
   export let saveParameters = () => {};
   export let saveService = () => {};
+  export let resetServiceCounter = () => {};
   export let onView = () => {};
 
   $: scopedGroupEntries = selectedGroupEntries.length ? selectedGroupEntries : groupEntries;
@@ -61,7 +63,7 @@
 
   <div class="settings-page">
     {#if activeServiceView === "app"}
-      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveParameters} />
+      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveRuntimeConfig} {saveParameters} />
     {:else if activeServiceView === "sensors"}
       <SensorSettings {scopedSensorRows} {system} {pairSensor} {sensorKindLabel} {saveSensorTemperature} {confirmAction} />
     {:else if activeServiceView === "grouping"}
@@ -71,9 +73,9 @@
     {:else if activeServiceView === "ac-setup"}
       <AcSetupSettings {acEntries} {scopedGroupEntries} {system} {acName} {zoneName} {saveAcBase} {saveAcSettings} {saveTurboGroup} {saveSpill} />
     {:else if activeServiceView === "general" || activeServiceView === "parameters"}
-      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveParameters} />
+      <AppSettings {runtime} {controller} {selectedTheme} {showSupportDiagnostics} {system} groupEntries={selectedZones.length ? selectedZones : scopedGroupEntries} {zoneName} {setTheme} {setShowSupportDiagnostics} {savePreference} {saveRuntimeConfig} {saveParameters} />
     {:else if activeServiceView === "service" || activeServiceView === "system"}
-      <ServiceSettings {service} {saveService} />
+      <ServiceSettings {service} datetimeSync={controller?.datetime_sync || {}} {acEntries} {acName} {saveService} {resetServiceCounter} />
     {:else}
       <DiagnosticsSettings {runtime} {socketState} {controller} {transactions} {busEvents} {acEntries} />
     {/if}

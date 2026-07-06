@@ -28,9 +28,8 @@
   <div class="zone-top">
     <strong>{name}</strong>
     {#if sensorControl}
-      <div class="zone-room-badge" aria-label={`Room temperature ${tempText(roomTemperature, 1)}`}>
-        <span>Room</span>
-        <strong>{tempText(roomTemperature, 1)}</strong>
+      <div class="zone-room-badge" aria-label={`Room temperature ${tempText(roomTemperature)}`}>
+        <strong>{tempText(roomTemperature)}</strong>
       </div>
     {/if}
   </div>

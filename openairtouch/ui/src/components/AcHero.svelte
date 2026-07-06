@@ -1,13 +1,15 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { modeName } from "../lib/airtouch.js";
-  import { tempText } from "../lib/format.js";
+  import { finite, percentText, tempText } from "../lib/format.js";
   import SemanticIcon from "./icons/SemanticIcon.svelte";
 
   export let acOptions = [];
   export let selectedAcId = 0;
   export let selectedStatus = {};
   export let selectedThermostat = {};
+  export let selectedTemperatureState = {};
+  export let selectedRoomName = "";
+  export let selectedGroupEntries = [];
   export let selectedHistoryEntries = [];
   export let selectedHistoryPath = "";
   export let selectedPlanEntries = [];
@@ -50,9 +52,15 @@
   $: smoothPath = smoothHistoryPath(selectedHistoryPath);
   $: smoothPlanPath = smoothHistoryPath(selectedPlanPath);
   $: historyAreaPath = historyAreaFor(smoothPath);
-  $: controlRoomTemperature = selectedStatus.sensor_temp ?? selectedThermostat.current;
+  $: controlRoomTemperature = selectedTemperatureState.control?.value ?? selectedStatus.sensor_temp ?? selectedThermostat.current;
+  $: controlRoomLabel = selectedTemperatureState.control?.label || selectedRoomName || "Room";
+  $: liveSpillEntry = selectedGroupEntries.find(([_id, group]) => {
+    const percentage = finite(group?.status?.percentage);
+    return group?.status?.spill_on === true && percentage !== null && percentage > 0;
+  });
+  $: liveSpillPercentage = finite(liveSpillEntry?.[1]?.status?.percentage);
   $: planEnd = selectedPlanEntries.at(-1)?.temperature;
-  $: planLabel = selectedPlanEntries.length ? tempText(planEnd, 1) : selectedCallLabel || (selectedHistoryEntries.length ? tempText(selectedHistoryEntries[selectedHistoryEntries.length - 1].temperature, 1) : "-");
+  $: planLabel = selectedPlanEntries.length ? tempText(planEnd) : selectedCallLabel || (selectedHistoryEntries.length ? tempText(selectedHistoryEntries[selectedHistoryEntries.length - 1].temperature) : "-");
 </script>
 
 <article class="hero-card primary">
@@ -78,12 +86,14 @@
   <div class="hero-temp-split">
     <div class="hero-setpoint">
       <div class="hero-readout-label">Setpoint</div>
-      <div class="hero-value">{tempText(selectedThermostat.setpoint)}</div>
+      <div class="hero-value">{tempText(selectedTemperatureState.setpoint?.value ?? selectedThermostat.setpoint)}</div>
     </div>
     <div class="hero-current">
-      <div class="hero-readout-label">Room</div>
-      <div class="hero-value small">{tempText(controlRoomTemperature, 1)}</div>
-      <div class="hero-status-line">{modeName(selectedStatus.mode)}</div>
+      <div class="hero-readout-label">{controlRoomLabel}</div>
+      <div class="hero-value small">{tempText(controlRoomTemperature)}</div>
+      {#if liveSpillPercentage !== null}
+        <div class="hero-status-line">Spill: {percentText(liveSpillPercentage)}</div>
+      {/if}
     </div>
   </div>
   <div class="history-strip">
@@ -95,7 +105,7 @@
       {#if smoothPlanPath}<path class="history-plan-line" d={smoothPlanPath}></path>{/if}
     </svg>
     <div class="history-meta">
-      <span>{selectedHistoryEntries.length ? tempText(selectedHistoryEntries[0].temperature, 1) : "History"}</span>
+      <span>{selectedHistoryEntries.length ? tempText(selectedHistoryEntries[0].temperature) : "History"}</span>
       <span>{planLabel}</span>
     </div>
   </div>

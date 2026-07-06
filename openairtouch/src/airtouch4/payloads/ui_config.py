@@ -205,9 +205,16 @@ def decode_service(payload: bytes) -> dict[str, Any]:
             flags = payload[22]
             result.update({
                 "show_service_due": bit(flags, 0x80),
+                "app_notification": bit(flags, 0x80),
+                "half_year": bit(flags, 0x01),
+                "one_year": bit(flags, 0x02),
+                "two_years": bit(flags, 0x04),
                 "service_due_locked": bit(flags, 0x01),
                 "filter_clean_due": bit(flags, 0x02),
                 "maintenance_due": bit(flags, 0x04),
+                "display_days": payload[23],
+                "running_days": u16be(payload, 24),
+                "client_number": int.from_bytes(payload[26:30], "big"),
                 "months": payload[23],
                 "days": u16be(payload, 24),
                 "runtime_hours": int.from_bytes(payload[26:30], "big"),

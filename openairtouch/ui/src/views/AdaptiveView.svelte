@@ -72,7 +72,7 @@
       hasData: !!(actualPath || forecastPath),
       actualPath,
       forecastPath,
-      label: `${latestActual === undefined ? "-" : tempText(latestActual, 1)} -> ${latestForecast === undefined ? "-" : tempText(latestForecast, 1)}`
+      label: `${latestActual === undefined ? "-" : tempText(latestActual)} -> ${latestForecast === undefined ? "-" : tempText(latestForecast)}`
     };
   }
   const zoneIdSet = (value) => {

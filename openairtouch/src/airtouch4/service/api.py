@@ -72,6 +72,14 @@ def create_app(controller: RuntimeController):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"adaptive": config}
 
+    @app.post("/api/runtime")
+    async def runtime_config(body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            config = controller.update_runtime_config(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"runtime": config}
+
     @app.post("/api/adaptive/model")
     async def adaptive_model(body: dict[str, Any]) -> dict[str, Any]:
         try:

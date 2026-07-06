@@ -10,6 +10,8 @@
   export let selectedAcId = 0;
   export let selectedStatus = {};
   export let selectedThermostat = {};
+  export let selectedTemperatureState = {};
+  export let selectedRoomName = "";
   export let selectedHistoryEntries = [];
   export let selectedHistoryPath = "";
   export let selectedPlanEntries = [];
@@ -21,6 +23,7 @@
   export let selectedFanOptions = [];
   export let selectedSensorName = "-";
   export let selectedZones = [];
+  export let selectedGroupEntries = [];
   export let activeZoneCount = 0;
   export let averageDamper = null;
   export let alerts = [];
@@ -40,6 +43,9 @@
     {selectedAcId}
     {selectedStatus}
     {selectedThermostat}
+    {selectedTemperatureState}
+    {selectedRoomName}
+    {selectedGroupEntries}
     {selectedHistoryEntries}
     {selectedHistoryPath}
     {selectedPlanEntries}
@@ -58,7 +64,7 @@
   />
 
   <MetricCard label="Active Zones" value={`${activeZoneCount} / ${selectedZones.length}`} detail={activeZoneCount ? "Zones calling" : "All zones idle"} />
-  <MetricCard label="Indoor" value={tempText(selectedThermostat.current, 1)} detail={selectedSensorName} />
+  <MetricCard label="Indoor" value={tempText(selectedTemperatureState.indoor?.value ?? selectedThermostat.current)} detail={selectedTemperatureState.indoor?.sourceLabel || selectedSensorName} />
   <MetricCard label={alerts.length ? "Warning" : "System"} value={alerts.length ? "Gateway Fault" : "No Faults"} detail={alerts[0] || "Runtime healthy"} warning={alerts.length > 0} />
   <MetricCard label="Damper Summary" value={percentText(averageDamper)} detail="Average opening">
     <div class="bar"><div class="bar-fill" style={`width:${averageDamper === null ? 0 : averageDamper}%`}></div></div>
