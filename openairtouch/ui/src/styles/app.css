@@ -899,6 +899,17 @@
     line-height: 1;
   }
 
+  .zone-spill-badge {
+    color: var(--mode-ink);
+    background: color-mix(in srgb, var(--mode-accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--mode-accent) 30%, var(--surface-border));
+  }
+
+  .zone-spill-badge span,
+  .zone-spill-badge strong {
+    color: var(--mode-ink);
+  }
+
   .zone-actions {
     display: grid;
     grid-template-columns: 28px minmax(42px, 1fr) 28px;
@@ -909,13 +920,24 @@
   .zone-damper {
     grid-area: damper;
     display: grid;
-    gap: 4px;
+    gap: 2px;
     align-content: center;
     align-self: center;
   }
 
   .zone-damper .bar {
     width: 100%;
+  }
+
+  .bar-scale {
+    min-height: 9px;
+    display: flex;
+    justify-content: space-between;
+    color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    font-size: 8px;
+    font-weight: 760;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
 
   .tile-foot {

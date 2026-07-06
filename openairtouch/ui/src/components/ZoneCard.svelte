@@ -22,6 +22,7 @@
   $: damperDisplayPercentage = isOn || spillCurrentPercentage !== null
     ? (spillCurrentPercentage ?? finite(status.percentage) ?? 0)
     : 0;
+  $: footBadges = badges.filter((badge) => !(spill && badge === "Spill"));
   $: controlsDisabled = !isOn || pendingKey.startsWith(`zone-set-${id}-`) || pendingKey.startsWith(`zone-percent-${id}-`);
 </script>
 
@@ -36,12 +37,17 @@
       <div class="zone-room-badge" aria-label={`Room temperature ${tempText(roomTemperature)}`}>
         <strong>{tempText(roomTemperature)}</strong>
       </div>
+    {:else if spill}
+      <div class="zone-room-badge zone-spill-badge" aria-label="Spill active">
+        <strong>Active</strong>
+      </div>
     {/if}
   </div>
   <div class="zone-damper">
     <div class="bar"><div class="bar-fill" style={`width:${damperDisplayPercentage}%`}></div></div>
+    <div class="bar-scale" aria-hidden="true"><span>0%</span><span>100%</span></div>
     <div class="tile-foot">
-      {#each badges as badge}<span>{badge}</span>{/each}
+      {#each footBadges as badge}<span>{badge}</span>{/each}
     </div>
   </div>
   <div class="zone-primary-field">
