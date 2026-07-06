@@ -80,7 +80,7 @@ export function groupEntriesForAc(ac, groupEntries, {includeSpill = false} = {})
   });
 }
 
-export const activeZoneEntriesForAc = (ac, groupEntries) => groupEntriesForAc(ac, groupEntries, {includeSpill: false});
+export const activeZoneEntriesForAc = (ac, groupEntries) => groupEntriesForAc(ac, groupEntries, {includeSpill: ac?.settings?.hide_spill_group === false});
 
 export function average(values) {
   const clean = values.map(finite).filter((value) => value !== null);

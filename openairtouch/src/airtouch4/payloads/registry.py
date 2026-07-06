@@ -2,14 +2,17 @@
 
 The replacement-touchscreen implementation is APK-first.  MAINBOARD_DECODERS
 contains the internal RS485 surface derived from the touchscreen APK and bus
-captures.  REFERENCE_DECODERS is kept only for offline capture archaeology of
-mobile/client traffic observed on the same packet family.
+captures.  CLIENT_DECODERS contains mobile/server API traffic observed on the
+same packet family; live runtime events decode that surface for diagnostics
+without applying it to replacement-touchscreen state.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..constants import ADDR_MOBILE, ADDR_SERVER
+from ..packet import AirTouchPacket
 from . import client_api, config, expanded, internal_misc, internal_status, ui_config
 
 Decoder = Callable[[bytes], dict[str, Any]]
@@ -72,7 +75,7 @@ MAINBOARD_DECODERS: dict[int, Decoder] = {
     0x83: ui_config.decode_gateway_info,
 }
 
-REFERENCE_DECODERS: dict[int, Decoder] = {
+CLIENT_DECODERS: dict[int, Decoder] = {
     0x2A: client_api.decode_group_control,
     0x2B: client_api.decode_group_status,
     0x2C: client_api.decode_ac_control,
@@ -80,9 +83,11 @@ REFERENCE_DECODERS: dict[int, Decoder] = {
     0x2F: client_api.decode_bulk_info,
 }
 
+REFERENCE_DECODERS = CLIENT_DECODERS
+
 DECODERS: dict[int, Decoder] = {
     **MAINBOARD_DECODERS,
-    **REFERENCE_DECODERS,
+    **CLIENT_DECODERS,
 }
 
 
@@ -99,6 +104,48 @@ def decode_mainboard_payload(command: int, payload: bytes) -> dict[str, Any]:
             "error": f"{type(exc).__name__}: {exc}",
             "payload_len": len(payload),
         }
+
+
+def is_client_packet(packet: AirTouchPacket) -> bool:
+    """Return true for mobile/server API packets that use client command ids."""
+    if packet.command not in CLIENT_DECODERS:
+        return False
+    src_high = packet.src & 0xF0
+    dest_high = packet.dest & 0xF0
+    return (
+        packet.src in (ADDR_MOBILE, ADDR_SERVER)
+        or packet.dest in (ADDR_MOBILE, ADDR_SERVER)
+        or src_high in (0xB0, 0xC0)
+        or dest_high in (0xB0, 0xC0)
+    )
+
+
+def decode_client_payload(command: int, payload: bytes) -> dict[str, Any]:
+    """Decode AirTouch mobile/server API payloads observed on the bus."""
+    decoder = CLIENT_DECODERS.get(command)
+    if decoder is None:
+        return {"type": "unknown_client", "decoder": "client_api", "payload_len": len(payload)}
+    try:
+        decoded = decoder(payload)
+        return {**decoded, "decoder": "client_api"}
+    except Exception as exc:
+        return {
+            "type": "decode_error",
+            "decoder": "client_api",
+            "error": f"{type(exc).__name__}: {exc}",
+            "payload_len": len(payload),
+        }
+
+
+def decode_packet_payload(
+    packet: AirTouchPacket,
+    mainboard_decoder: Callable[[int, bytes], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Decode a packet using client decoders when the address/command surface matches."""
+    if is_client_packet(packet):
+        return decode_client_payload(packet.command, packet.payload)
+    decoder = mainboard_decoder or decode_mainboard_payload
+    return decoder(packet.command, packet.payload)
 
 
 def decode_capture_payload(command: int, payload: bytes) -> dict[str, Any]:

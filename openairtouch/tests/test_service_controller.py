@@ -456,6 +456,62 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertIn("25.7 C", record["summary"])
         self.assertIn("Battery 100%", record["summary"])
 
+    def test_runtime_decodes_client_group_status_without_state_mutation(self) -> None:
+        packet = AirTouchPacket(
+            dest=0xB0,
+            src=0xC0,
+            packet_id=0x44,
+            command=0x2B,
+            payload=bytes.fromhex("05 3C 15 00 00 10"),
+            raw_mode=True,
+        )
+        runtime = AirTouchRuntime(
+            FakeTransport([packet.encode(stuff_raw=True)]),
+            RuntimeConfig(active=False, init_transactions=False),
+        )
+
+        events = runtime.step()
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].decoded["type"], "group_status_client")
+        self.assertEqual(events[0].decoded["decoder"], "client_api")
+        self.assertFalse(events[0].state_changed)
+        self.assertEqual(runtime.state.groups, {})
+
+    def test_event_record_adds_plain_english_client_group_status(self) -> None:
+        packet = AirTouchPacket(
+            dest=0xB0,
+            src=0xC0,
+            packet_id=0x44,
+            command=0x2B,
+            payload=bytes.fromhex("05 3C 15 00 00 10"),
+            raw_mode=True,
+        )
+        event = RuntimeEvent(
+            "rx",
+            packet=packet,
+            decoded={
+                "type": "group_status_client",
+                "decoder": "client_api",
+                "records": [{
+                    "group": 5,
+                    "power_name": "off",
+                    "control_method": "damper",
+                    "percentage": 60,
+                    "spill_on": True,
+                }],
+            },
+        )
+
+        record = _event_record(event)
+
+        self.assertEqual(record["plain"]["category"], "client_status")
+        self.assertEqual(record["plain"]["category_label"], "Client Status")
+        self.assertIn("Client Zone Status", record["summary"])
+        self.assertIn("Zone 6", record["summary"])
+        self.assertIn("Open 60%", record["summary"])
+        self.assertIn("Spill Active", record["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

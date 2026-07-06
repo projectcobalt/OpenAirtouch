@@ -43,7 +43,7 @@ def parse_internal_temperature(byte: int) -> float | None:
     if byte < 40:
         return float(byte - 25)
     if byte < 231:
-        return round((byte + 110) / 10, 1)
+        return round((byte + 105) / 10, 1)
     return float(byte - 197)
 
 
@@ -55,7 +55,7 @@ def encode_internal_temperature(temperature: float) -> int:
     if rounded < 15:
         return rounded + 25
     if rounded <= 34:
-        return (rounded * 10) - 110
+        return (rounded * 10) - 105
     return rounded + 197
 
 

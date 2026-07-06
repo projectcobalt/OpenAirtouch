@@ -8,6 +8,7 @@ from typing import Iterable, Protocol
 
 from ..constants import ADDR_TOUCHPAD_1
 from ..packet import AirTouchPacket
+from ..payloads import decode_packet_payload
 from ..profiles import AT4, ProtocolProfile, get_profile
 from ..session.queue import TransactionEvent, TransactionQueue, TransactionSpec
 from ..session.touchscreen import TouchscreenSession
@@ -218,14 +219,16 @@ class AirTouchRuntime:
         for packet in self._session.feed_rx(data):
             self.rx_count += 1
             detected = self._profile.detect_response(packet.command, packet.payload)
-            decoded = self._profile.decode_payload(packet.command, packet.payload)
+            decoded = decode_packet_payload(packet, self._profile.decode_payload)
             if detected is not None:
                 decoded = {**decoded, "detected_protocol": detected}
                 self._handle_detected_protocol(detected)
-            self.state.apply_decoded(packet.command, decoded)
-            self.state.last_command = packet.command
-            self._queue_sensor_info_requests(decoded)
-            events.append(RuntimeEvent("rx", packet=packet, decoded=decoded, state_changed=True))
+            state_changed = decoded.get("decoder") != "client_api"
+            if state_changed:
+                self.state.apply_decoded(packet.command, decoded)
+                self.state.last_command = packet.command
+                self._queue_sensor_info_requests(decoded)
+            events.append(RuntimeEvent("rx", packet=packet, decoded=decoded, state_changed=state_changed))
             if self.transactions is not None:
                 events.extend(
                     RuntimeEvent("transaction", transaction=event)

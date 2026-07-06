@@ -14,9 +14,10 @@ from airtouch4.payloads.ui_config import decode_main_display_new
 
 class InternalTemperatureTests(unittest.TestCase):
     def test_internal_temperature_preserves_tenths_precision(self) -> None:
-        self.assertEqual(parse_internal_temperature(0x73), 22.5)
-        self.assertEqual(parse_internal_temperature(0x79), 23.1)
-        self.assertEqual(parse_internal_temperature(0x82), 24.0)
+        self.assertEqual(parse_internal_temperature(0x72), 21.9)
+        self.assertEqual(parse_internal_temperature(0x73), 22.0)
+        self.assertEqual(parse_internal_temperature(0x79), 22.6)
+        self.assertEqual(parse_internal_temperature(0x82), 23.5)
 
     def test_internal_temperature_handles_low_and_high_ranges(self) -> None:
         self.assertEqual(parse_internal_temperature(0x26), 13.0)
@@ -24,8 +25,8 @@ class InternalTemperatureTests(unittest.TestCase):
         self.assertIsNone(parse_internal_temperature(0xFF))
 
     def test_internal_temperature_encoder_uses_matching_offset(self) -> None:
-        self.assertEqual(encode_internal_temperature(22), 0x6E)
-        self.assertEqual(encode_internal_temperature(24), 0x82)
+        self.assertEqual(encode_internal_temperature(22), 0x73)
+        self.assertEqual(encode_internal_temperature(24), 0x87)
 
     def test_touchpad_heartbeat_uses_apk_short_payload(self) -> None:
         payload = encode_touchpad_heartbeat_payload(25.0)

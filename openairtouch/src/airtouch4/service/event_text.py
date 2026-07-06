@@ -26,6 +26,8 @@ CATEGORY_LABELS = {
     "ac_config": "AC Config",
     "ac_status": "AC Status",
     "bus": "Bus",
+    "client_command": "Client Command",
+    "client_status": "Client Status",
     "controller": "Controller",
     "decode": "Decode",
     "event": "Event",
@@ -76,6 +78,30 @@ def _describe_decoded(decoded: dict[str, Any], *, direction: str) -> dict[str, A
         return _record_list("zone_status", f"{prefix} Zone Status", records)
     if kind == "set_group_status_internal":
         return _plain("zone_command", f"{prefix} {_describe_group_command(decoded)}")
+    if kind == "group_status_client":
+        records = [
+            _describe_client_group_status(record)
+            for record in decoded.get("records", [])
+            if isinstance(record, dict)
+        ]
+        return _record_list("client_status", f"{prefix} Client Zone Status", records)
+    if kind == "group_status_client_request":
+        return _plain("client_status", f"{prefix} Client Zone Status Request")
+    if kind == "group_control_client":
+        return _plain("client_command", f"{prefix} {_describe_client_group_command(decoded)}")
+    if kind == "ac_status_client":
+        records = [
+            _describe_ac_status(record)
+            for record in decoded.get("records", [])
+            if isinstance(record, dict)
+        ]
+        return _record_list("client_status", f"{prefix} Client AC Status", records)
+    if kind == "ac_status_client_request":
+        return _plain("client_status", f"{prefix} Client AC Status Request")
+    if kind == "ac_control_client":
+        return _plain("client_command", f"{prefix} {_describe_client_ac_command(decoded)}")
+    if kind == "bulk_info_client":
+        return _plain("client_status", f"{prefix} Client Bulk Info")
     if kind == "group_name":
         records = []
         for record in decoded.get("records", []):
@@ -207,6 +233,59 @@ def _describe_group_command(decoded: dict[str, Any]) -> str:
         parts.append(f"Setpoint {_temp(decoded.get('setpoint'))}")
     elif decoded.get("percentage") is not None:
         parts.append(f"Open {_text(decoded.get('percentage'), '-')}%")
+    return ", ".join(parts)
+
+
+def _describe_client_group_status(record: dict[str, Any]) -> str:
+    parts = [
+        f"Zone {_one_based(record.get('group'))}",
+        _title(record.get("power_name") or "unknown"),
+    ]
+    if record.get("control_method") == "temperature":
+        parts.append("Temperature Control")
+        if record.get("setpoint") is not None:
+            parts.append(f"Setpoint {_temp(record.get('setpoint'))}")
+    else:
+        parts.append(f"Open {_text(record.get('percentage'), '-')}%")
+    if record.get("temperature") is not None:
+        parts.append(f"Room {_temp(record.get('temperature'))}")
+    if record.get("spill_on"):
+        parts.append("Spill Active")
+    if record.get("low_battery"):
+        parts.append("Sensor Battery Low")
+    return ", ".join(parts)
+
+
+def _describe_client_group_command(decoded: dict[str, Any]) -> str:
+    parts = [f"Client Set Zone {_one_based(decoded.get('group'))}"]
+    power = decoded.get("power_name")
+    if power and power != "unchanged":
+        parts.append(_title(power))
+    method = decoded.get("control_method")
+    if method and method != "unchanged":
+        parts.append(_title(method))
+    setting = decoded.get("setting")
+    if isinstance(setting, dict):
+        if setting.get("setpoint") is not None:
+            parts.append(f"Setpoint {_temp(setting.get('setpoint'))}")
+        if setting.get("damper_percentage") is not None:
+            parts.append(f"Open {_text(setting.get('damper_percentage'), '-')}%")
+        if setting.get("action") is not None:
+            parts.append(_title(setting.get("action")))
+    return ", ".join(parts)
+
+
+def _describe_client_ac_command(decoded: dict[str, Any]) -> str:
+    parts = [f"Client Set AC {_one_based(decoded.get('ac'))}"]
+    power = decoded.get("power_name")
+    if power and power != "unchanged":
+        parts.append(_title(power))
+    if decoded.get("mode") is not None:
+        parts.append(f"Mode {_mode(decoded.get('mode'))}")
+    if decoded.get("fan") is not None:
+        parts.append(f"Fan {_fan(decoded.get('fan'))}")
+    if decoded.get("setpoint") is not None:
+        parts.append(f"Setpoint {_temp(decoded.get('setpoint'))}")
     return ", ".join(parts)
 
 

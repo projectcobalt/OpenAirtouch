@@ -970,7 +970,7 @@
   $: modeStyle = modeStyleFor(currentModeKey);
   $: applyModeStyleToBody(modeStyle);
   $: activeZoneCount = selectedZones.filter(([_id, group]) => groupIsOn(group)).length;
-  $: averageDamper = average(selectedZones.map(([_id, group]) => group?.status?.percentage));
+  $: averageDamper = average(selectedZones.map(([_id, group]) => groupIsOn(group) ? group?.status?.percentage : 0));
   $: sensorRows = (system, groupEntries, sensorRowsFromState());
   $: balanceRows = Object.fromEntries(((system.balance?.zones || [])).map((zone) => [String(zone.zone), zone]));
   $: alerts = (snapshot, acEntries, collectAlerts());
@@ -1027,6 +1027,7 @@
         {selectedSensorName}
         {selectedZones}
         {selectedGroupEntries}
+        {balanceRows}
         {activeZoneCount}
         {averageDamper}
         {alerts}

@@ -10,6 +10,7 @@
   export let selectedTemperatureState = {};
   export let selectedRoomName = "";
   export let selectedGroupEntries = [];
+  export let balanceRows = {};
   export let selectedHistoryEntries = [];
   export let selectedHistoryPath = "";
   export let selectedPlanEntries = [];
@@ -58,7 +59,10 @@
     const percentage = finite(group?.status?.percentage);
     return group?.status?.spill_on === true && percentage !== null && percentage > 0;
   });
-  $: liveSpillPercentage = finite(liveSpillEntry?.[1]?.status?.percentage);
+  $: liveSpillCurrent = finite(balanceRows?.[String(liveSpillEntry?.[0])]?.current_value);
+  $: liveSpillPercentage = liveSpillCurrent !== null && liveSpillCurrent > 0
+    ? liveSpillCurrent
+    : finite(liveSpillEntry?.[1]?.status?.percentage);
   $: planEnd = selectedPlanEntries.at(-1)?.temperature;
   $: planLabel = selectedPlanEntries.length ? tempText(planEnd) : selectedCallLabel || (selectedHistoryEntries.length ? tempText(selectedHistoryEntries[selectedHistoryEntries.length - 1].temperature) : "-");
 </script>

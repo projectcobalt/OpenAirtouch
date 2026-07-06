@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3 - 2026-07-06
+
+- Decode AirTouch mobile/server client traffic in live backend events without applying client echoes to replacement-touchscreen state.
+- Surface readable client zone and AC messages in diagnostics, including spill-active status from client group status.
+- Align internal AirTouch 4 temperature parsing with APK precision and preserve tenths in zone and AC temperature surfaces.
+- Show spill groups on Control when AC settings allow them, using live balance/current opening for active spill while keeping normal off-zone bars closed.
+
 ## 0.6.3 - 2026-07-02
 
 - Make adaptive heat/cool mode switching use comfort-band guards so satisfied rooms do not immediately call the opposite mode.

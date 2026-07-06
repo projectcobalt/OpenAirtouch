@@ -9,6 +9,7 @@
   export let badges = [];
   export let pendingKey = "";
   export let spill = false;
+  export let balance = {};
   export let name = "";
   export let roomTemperature = null;
 
@@ -17,6 +18,10 @@
   $: sensorControl = status.sensor_control === true;
   $: hasSetpoint = finite(status.setpoint) !== null;
   $: hasPercentage = finite(status.percentage) !== null;
+  $: spillCurrentPercentage = spill && status.spill_on === true ? finite(balance.current_value) : null;
+  $: damperDisplayPercentage = isOn || spillCurrentPercentage !== null
+    ? (spillCurrentPercentage ?? finite(status.percentage) ?? 0)
+    : 0;
   $: controlsDisabled = !isOn || pendingKey.startsWith(`zone-set-${id}-`) || pendingKey.startsWith(`zone-percent-${id}-`);
 </script>
 
@@ -34,7 +39,7 @@
     {/if}
   </div>
   <div class="zone-damper">
-    <div class="bar"><div class="bar-fill" style={`width:${finite(status.percentage) === null ? 0 : status.percentage}%`}></div></div>
+    <div class="bar"><div class="bar-fill" style={`width:${damperDisplayPercentage}%`}></div></div>
     <div class="tile-foot">
       {#each badges as badge}<span>{badge}</span>{/each}
     </div>

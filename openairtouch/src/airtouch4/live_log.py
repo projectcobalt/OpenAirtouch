@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .packet import AirTouchPacket, hex_bytes, parse_packet
-from .payloads import decode_mainboard_payload
+from .payloads import decode_mainboard_payload, decode_packet_payload
 
 
 class JsonlBusLogger:
@@ -39,7 +39,7 @@ class JsonlBusLogger:
         record = packet.to_record()
         record.update({
             "event": "rx",
-            "decoded": decode_mainboard_payload(packet.command, packet.payload),
+            "decoded": decode_packet_payload(packet),
         })
         if wire is not None:
             record["wire"] = hex_bytes(wire)
