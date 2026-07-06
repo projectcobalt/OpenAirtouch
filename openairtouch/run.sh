@@ -34,7 +34,7 @@ FORCE_SOURCE_ADDRESS="$(config force_source_address false)"
 DETECT_SECONDS="$(config detect_seconds 3.0)"
 HEARTBEAT_INTERVAL="$(config heartbeat_interval 30.0)"
 TOUCHPAD_TEMPERATURE_SENSOR="$(config touchpad_temperature_sensor "")"
-TOUCHPAD_TEMPERATURE="$(config touchpad_temperature 25.0)"
+TOUCHPAD_TEMPERATURE="$(config touchpad_temperature 23.0)"
 HEARTBEAT_PAYLOAD="$(config heartbeat_payload "")"
 BUS_LOG="$(config bus_log true)"
 UI_THEME="$(config ui_theme system)"
@@ -56,6 +56,10 @@ REMOTE_ERROR_CACHE_DAYS="$(config remote_error_cache_days 2.0)"
 REMOTE_ERROR_DEVICE_ID="$(config remote_error_device_id "")"
 REMOTE_ERROR_SERIAL="$(config remote_error_serial "")"
 LOG_LEVEL="$(config log_level info)"
+
+if [[ -z "${INDOOR_TEMPERATURE_ENTITY}" && -n "${TOUCHPAD_TEMPERATURE_SENSOR}" ]]; then
+    INDOOR_TEMPERATURE_ENTITY="${TOUCHPAD_TEMPERATURE_SENSOR}"
+fi
 
 case "${TRANSPORT}" in
     local_serial|tcp_serial)
@@ -87,12 +91,15 @@ esac
 
 export PYTHONPATH=/opt/airtouch4/src
 
-RESOLVED_HEARTBEAT_PAYLOAD="$(
-    /opt/airtouch4/venv/bin/python /opt/airtouch4/scripts/resolve_touchpad_temperature.py \
-        --sensor "${TOUCHPAD_TEMPERATURE_SENSOR}" \
-        --fallback "${TOUCHPAD_TEMPERATURE}" \
-        --raw-payload "${HEARTBEAT_PAYLOAD}"
-)"
+RESOLVED_HEARTBEAT_PAYLOAD="${HEARTBEAT_PAYLOAD}"
+if [[ -n "${HEARTBEAT_PAYLOAD}" ]]; then
+    RESOLVED_HEARTBEAT_PAYLOAD="$(
+        /opt/airtouch4/venv/bin/python /opt/airtouch4/scripts/resolve_touchpad_temperature.py \
+            --sensor "${TOUCHPAD_TEMPERATURE_SENSOR}" \
+            --fallback "${TOUCHPAD_TEMPERATURE}" \
+            --raw-payload "${HEARTBEAT_PAYLOAD}"
+    )"
+fi
 
 ARGS=(
     "--transport" "${TRANSPORT}"
@@ -125,6 +132,7 @@ ARGS=(
     "--weather-poll-interval" "${WEATHER_POLL_INTERVAL}"
     "--adaptive-config-path" "/data/adaptive_config.json"
     "--adaptive-learning-path" "/data/adaptive_learning.json"
+    "--runtime-config-path" "/data/runtime_config.json"
     "--remote-error-cache" "/data/error-cache.json"
     "--remote-error-cache-days" "${REMOTE_ERROR_CACHE_DAYS}"
     "--remote-error-device-id" "${REMOTE_ERROR_DEVICE_ID}"

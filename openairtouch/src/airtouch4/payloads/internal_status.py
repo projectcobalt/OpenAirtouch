@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..packet import hex_bytes
-from .common import bit, parse_internal_temperature, u16be
+from .common import bit, decode_touchpad_heartbeat_payload, parse_internal_temperature, u16be
 
 
 def decode_set_group_status(payload: bytes) -> dict[str, Any]:
@@ -97,12 +97,14 @@ def decode_ac_status(payload: bytes) -> dict[str, Any]:
 def decode_touchpad_temperature(payload: bytes) -> dict[str, Any]:
     if len(payload) < 3:
         return {"type": "touchpad_temperature", "truncated": True, "raw": hex_bytes(payload)}
+    decoded = decode_touchpad_heartbeat_payload(payload)
     return {
         "type": "touchpad_temperature",
-        "touchpad": payload[0],
-        "temperature_raw": payload[1],
-        "temperature": parse_internal_temperature(payload[1]),
-        "tail": hex_bytes(payload[2:]),
+        "prefix": payload[0],
+        "heartbeat_raw": decoded["heartbeat_raw"],
+        "temperature": decoded["temperature"],
+        "payload_encoding": "apk_touchpad_short_le",
+        "raw": hex_bytes(payload),
     }
 
 

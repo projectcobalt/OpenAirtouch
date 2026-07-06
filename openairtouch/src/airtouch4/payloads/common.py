@@ -32,7 +32,12 @@ def signed_hex(byte: int) -> str:
 
 
 def parse_internal_temperature(byte: int) -> float | None:
-    """Decode one-byte temperatures used in internal touchpanel frames."""
+    """Decode one-byte temperatures used in internal touchpanel frames.
+
+    This follows the AirTouch 4 APK parserTemperature(byte) path used for
+    group, AC, and sensor-info temperatures. Touchpad heartbeat frames use a
+    separate little-endian short encoding below.
+    """
     if byte == 0xFF:
         return None
     if byte < 40:
@@ -52,6 +57,28 @@ def encode_internal_temperature(temperature: float) -> int:
     if rounded <= 34:
         return (rounded * 10) - 110
     return rounded + 197
+
+
+def encode_touchpad_heartbeat_payload(temperature: float, *, sensor_offset: float = 3.0) -> bytes:
+    """Encode the APK-style 0x26 touchpad heartbeat temperature payload.
+
+    The AT4 touchpad sends three bytes: a zero prefix followed by a signed
+    little-endian short. The short is the local sensor reading after the APK's
+    touchpad board offset has been removed.
+    """
+    heartbeat_value = int(round((float(temperature) - sensor_offset) * 10))
+    if heartbeat_value < -32768 or heartbeat_value > 32767:
+        raise ValueError("touchpad heartbeat temperature is outside signed-short range")
+    return bytes((0x00,)) + heartbeat_value.to_bytes(2, "little", signed=True)
+
+
+def decode_touchpad_heartbeat_payload(payload: bytes | bytearray, *, sensor_offset: float = 3.0) -> dict[str, float | int]:
+    """Decode the APK-style 0x26 touchpad heartbeat temperature payload."""
+    heartbeat_value = int.from_bytes(bytes(payload[1:3]), "little", signed=True)
+    return {
+        "heartbeat_raw": heartbeat_value,
+        "temperature": round((heartbeat_value / 10) + sensor_offset, 1),
+    }
 
 
 def decode_api_temperature(encoded: int) -> float:

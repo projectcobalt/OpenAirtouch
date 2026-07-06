@@ -7,6 +7,7 @@ param(
     [int]$HttpPort = 8099,
     [string]$Protocol = "auto",
     [string]$Python = "python",
+    [string]$RuntimeConfigPath = "",
     [switch]$Background,
     [switch]$StopExisting
 )
@@ -17,9 +18,45 @@ $worktreeRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $serviceScript = Join-Path $worktreeRoot "openairtouch\scripts\airtouch_service.py"
 $logDir = Join-Path $worktreeRoot ".codex-runlogs"
 $logPath = Join-Path $logDir "local-service.log"
+if ([string]::IsNullOrWhiteSpace($RuntimeConfigPath)) {
+    $RuntimeConfigPath = Join-Path $logDir "runtime-config.json"
+}
+
+function Repair-ProcessPathEnvironment {
+    # Some launch hosts expose both Path and PATH. Windows treats them as the
+    # same variable, but Start-Process can fail while copying the environment.
+    $pathValue = [Environment]::GetEnvironmentVariable("Path", "Process")
+    if ([string]::IsNullOrWhiteSpace($pathValue)) {
+        $pathValue = [Environment]::GetEnvironmentVariable("PATH", "Process")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($pathValue)) {
+        [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+        [Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+    }
+}
+
+function Get-NetstatListeners {
+    $pattern = "^\s*TCP\s+(.+):$HttpPort\s+\S+\s+LISTENING\s+(\d+)\s*$"
+    $lines = @(netstat -ano 2>$null | Select-String -Pattern ":$HttpPort")
+    foreach ($line in $lines) {
+        $text = $line.Line
+        if ($text -match $pattern) {
+            [pscustomobject]@{
+                LocalAddress = $matches[1]
+                LocalPort = $HttpPort
+                State = "Listen"
+                OwningProcess = [int]$matches[2]
+            }
+        }
+    }
+}
 
 function Get-LocalListeners {
-    Get-NetTCPConnection -LocalPort $HttpPort -State Listen -ErrorAction SilentlyContinue
+    $listeners = @(Get-NetTCPConnection -LocalPort $HttpPort -State Listen -ErrorAction SilentlyContinue)
+    if ($listeners.Count) {
+        return $listeners
+    }
+    Get-NetstatListeners
 }
 
 function Show-Status {
@@ -77,6 +114,7 @@ if ($listeners.Count) {
 }
 
 Set-Location $worktreeRoot
+Repair-ProcessPathEnvironment
 Write-Host ("RUN OpenAirTouch local service from {0}" -f $worktreeRoot)
 Write-Host ("TCP {0}:{1} -> HTTP http://{2}:{3}" -f $TcpHost, $TcpPort, $HostAddress, $HttpPort)
 
@@ -92,7 +130,8 @@ if ($Background) {
         "--tcp-port", $TcpPort,
         "--host", $HostAddress,
         "--http-port", $HttpPort,
-        "--protocol", $Protocol
+        "--protocol", $Protocol,
+        "--runtime-config-path", $RuntimeConfigPath
     )
     $process = Start-Process -FilePath $Python -ArgumentList $args -WorkingDirectory $worktreeRoot -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errPath -PassThru
     Write-Host ("BACKGROUND pid={0} log={1}" -f $process.Id, $logPath)
@@ -124,4 +163,5 @@ if ($Background) {
     --tcp-port $TcpPort `
     --host $HostAddress `
     --http-port $HttpPort `
-    --protocol $Protocol
+    --protocol $Protocol `
+    --runtime-config-path $RuntimeConfigPath

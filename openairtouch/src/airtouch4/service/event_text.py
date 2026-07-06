@@ -118,7 +118,7 @@ def _describe_decoded(decoded: dict[str, Any], *, direction: str) -> dict[str, A
         touchpad_count = len(decoded.get("touchpad_addresses") or [])
         return _plain("sensor", f"{prefix} Sensor List: {sensor_count} RF Sensors, {touchpad_count} Touchpads")
     if kind == "touchpad_temperature":
-        return _plain("touchpad", f"{prefix} Touchpad {_text(decoded.get('touchpad'), '-')} Temperature {_temp(decoded.get('temperature'))}")
+        return _plain("touchpad", f"{prefix} Touchpad Heartbeat {_temp(decoded.get('temperature'))}")
     if kind == "led_response":
         return _plain("touchpad", f"{prefix} LED State {_title(decoded.get('led_name'))}")
     if kind == "active_favourite":

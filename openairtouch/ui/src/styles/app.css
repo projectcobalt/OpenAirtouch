@@ -310,7 +310,7 @@
 
   .room-footer {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 12px;
     align-items: center;
     min-height: 44px;
@@ -1026,6 +1026,30 @@
     gap: 14px;
   }
 
+  .app-settings-card {
+    width: 100%;
+    gap: 18px;
+  }
+
+  .settings-section {
+    display: grid;
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--surface-border);
+  }
+
+  .settings-section:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .section-title {
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 820;
+    line-height: 1.2;
+  }
+
   .card-head,
   .service-actions,
   .readonly-summary {
@@ -1080,6 +1104,35 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+
+  .service-option-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .service-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid rgba(61,55,48,.14);
+    border-radius: 8px;
+    background: rgba(255,255,255,.72);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .service-check input {
+    width: 16px;
+    min-height: 16px;
+    height: 16px;
+    padding: 0;
+    accent-color: var(--mode-accent);
   }
 
   .field,

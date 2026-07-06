@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 from collections import deque
+from datetime import datetime
 import json
 from pathlib import Path
 import tempfile
@@ -13,7 +14,7 @@ from airtouch4.packet import AirTouchPacket
 from airtouch4.runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent
 from airtouch4.service.adaptive import AdaptiveConfig
 from airtouch4.service.adaptive_mpc import ZoneThermalModel
-from airtouch4.service.controller import RuntimeController, RuntimeControllerConfig, _event_record
+from airtouch4.service.controller import RuntimeController, RuntimeControllerConfig, _datetime_payload, _event_record
 from airtouch4.service.ha_client import HomeAssistantApiConfig
 from airtouch4.session.queue import TransactionSpec
 from airtouch4.transport import TcpSerialTransport
@@ -149,6 +150,43 @@ class RuntimeControllerTests(unittest.TestCase):
         transaction_events = [event for event in events if event["event"] == "transaction"]
         self.assertTrue(any(event["transaction"]["transaction_event"] == "complete" for event in transaction_events))
 
+    def test_datetime_payload_uses_airtouch_weekday_numbering(self) -> None:
+        payload = _datetime_payload(datetime(2026, 7, 5, 14, 3, 2))
+
+        self.assertEqual(payload, {
+            "year": 2026,
+            "month": 7,
+            "day": 5,
+            "weekday": 1,
+            "hour": 14,
+            "minute": 3,
+            "second": 2,
+        })
+
+    def test_datetime_sync_is_queued_only_from_main_touchpad(self) -> None:
+        main_runtime = AirTouchRuntime(
+            FakeTransport(),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False, source_address=0x90),
+        )
+        main_runtime.boot_complete = True
+        main_runtime.address_assigned = True
+        standby_runtime = AirTouchRuntime(
+            FakeTransport(),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False, source_address=0x91),
+        )
+        standby_runtime.boot_complete = True
+        standby_runtime.address_assigned = True
+        main = RuntimeController(RuntimeControllerConfig(port="TEST"))
+        standby = RuntimeController(RuntimeControllerConfig(port="TEST"))
+
+        main._sync_datetime_if_due(main_runtime)
+        standby._sync_datetime_if_due(standby_runtime)
+
+        assert main_runtime.transactions is not None
+        self.assertEqual(main_runtime.transactions.pending[0].spec.command, 0x40)
+        self.assertEqual(main_runtime.transactions.pending[0].spec.name, "datetime_sync")
+        self.assertIsNone(standby_runtime.transactions)
+
     def test_default_transport_factory_can_select_tcp_serial(self) -> None:
         controller = RuntimeController(
             RuntimeControllerConfig(
@@ -196,6 +234,17 @@ class RuntimeControllerTests(unittest.TestCase):
             self.assertEqual(second.public_config()["adaptive"]["mode"], "adaptive")
             self.assertEqual(second.public_config()["adaptive"]["compressor_min_off_time"], 300.0)
             self.assertEqual(second.public_config()["adaptive"]["compressor_groups"], [[0, 1], [2, 3]])
+
+    def test_runtime_fallback_temperature_updates_are_persisted_and_reloaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "runtime_config.json"
+            first = RuntimeController(RuntimeControllerConfig(port="TEST", runtime_config_path=path))
+
+            updated = first.update_runtime_config({"fallback_touchpad_temperature": 22.7})
+            second = RuntimeController(RuntimeControllerConfig(port="TEST", runtime_config_path=path))
+
+            self.assertEqual(updated["fallback_touchpad_temperature"], 22.7)
+            self.assertEqual(second.public_config()["fallback_touchpad_temperature"], 22.7)
 
     def test_adaptive_learning_data_can_be_reloaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

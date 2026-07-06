@@ -37,7 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-address", default="auto", help="Preferred touchpad source address: auto, 0x90, or 0x91. Default: auto.")
     parser.add_argument("--force-source-address", action="store_true", help="Use --source-address even if discovery sees that address occupied.")
     parser.add_argument("--heartbeat-interval", type=float, default=30.0, help="Heartbeat interval in seconds.")
-    parser.add_argument("--heartbeat-payload", default="00 EA 00", help="Heartbeat payload hex. Default: '00 EA 00'.")
+    parser.add_argument("--touchpad-temperature", type=float, default=23.0, help="Synthetic touchpad temperature in degrees C.")
+    parser.add_argument("--heartbeat-payload", default="", help="Optional raw heartbeat payload hex override.")
     parser.add_argument("--quiet", action="store_true", help="Suppress packet/status lines.")
     return parser
 
@@ -113,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                     active=True,
                     detect_seconds=args.detect_seconds,
                     heartbeat_interval=args.heartbeat_interval,
-                    heartbeat_payload=parse_hex_payload(args.heartbeat_payload),
+                    heartbeat_payload=parse_hex_payload(args.heartbeat_payload) if args.heartbeat_payload.strip() else None,
+                    touchpad_temperature=args.touchpad_temperature,
                     source_address=parse_source_address(args.source_address),
                     auto_address=True,
                     force_source_address=args.force_source_address,

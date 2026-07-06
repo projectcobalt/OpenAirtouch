@@ -72,14 +72,22 @@ def decode_group_name(payload: bytes) -> dict[str, Any]:
 
 def decode_main_display_new(payload: bytes) -> dict[str, Any]:
     records = []
-    for offset in range(0, len(payload) - 4, 5):
-        rec = payload[offset:offset + 5]
+    # AT4 APK PackageParser.unpackMainDisplayNew stores byte 0 as the active
+    # favourite number, then four 4-byte AC sign records starting at offset 4.
+    for index in range(4):
+        offset = 4 + (index * 4)
+        if offset + 4 > len(payload):
+            break
+        rec = payload[offset:offset + 4]
         sensor = rec[2]
         sign_flags = rec[1]
         group = sensor if sensor <= 15 else sensor - 0xE0 if sensor >= 0xE0 else None
         records.append({
             "ac": rec[0] & 0x0F,
-            "hidden": bit(rec[0], 0x80),
+            "sign_status": signed_hex(rec[0]),
+            "connected": (rec[0] & 0x60) not in (0x00, 0x20),
+            "no_ac": (rec[0] & 0x60) == 0x20,
+            "error": bit(rec[0], 0x10),
             "sign_flags": signed_hex(sign_flags),
             "turbo_active": bit(sign_flags, 0x04),
             "bypass_active": bit(sign_flags, 0x02),
@@ -93,9 +101,10 @@ def decode_main_display_new(payload: bytes) -> dict[str, Any]:
         })
     return {
         "type": "main_display_new",
+        "active_favourite": payload[0] if payload else None,
         "record_count": len(records),
         "records": records,
-        "trailing": hex_bytes(payload[len(records) * 5:]),
+        "trailing": hex_bytes(payload[4 + (len(records) * 4):]),
     }
 
 
@@ -205,9 +214,16 @@ def decode_service(payload: bytes) -> dict[str, Any]:
             flags = payload[22]
             result.update({
                 "show_service_due": bit(flags, 0x80),
+                "app_notification": bit(flags, 0x80),
+                "half_year": bit(flags, 0x01),
+                "one_year": bit(flags, 0x02),
+                "two_years": bit(flags, 0x04),
                 "service_due_locked": bit(flags, 0x01),
                 "filter_clean_due": bit(flags, 0x02),
                 "maintenance_due": bit(flags, 0x04),
+                "display_days": payload[23],
+                "running_days": u16be(payload, 24),
+                "client_number": int.from_bytes(payload[26:30], "big"),
                 "months": payload[23],
                 "days": u16be(payload, 24),
                 "runtime_hours": int.from_bytes(payload[26:30], "big"),

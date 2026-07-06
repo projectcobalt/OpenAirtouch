@@ -100,6 +100,100 @@ export function zoneRoomTemperature(_id, group) {
   return firstFinite(status.temperature, status.current_temp, status.sensor_temp);
 }
 
+function temperatureReading(value, label, source, extra = {}) {
+  const sourceLabels = {
+    ac_sensor: "AC sensor",
+    ac_status: "AC status",
+    ac_control_echo: "AC control echo",
+    active_zone_average: "Active zone average",
+    control_zone: "Control zone",
+    ha_indoor: "HA indoor",
+    zone_average: "Zone average"
+  };
+  return {value: finite(value), label, source, sourceLabel: sourceLabels[source] || title(source || "temperature"), ...extra};
+}
+
+function activeSensorZoneEntries(zones) {
+  return zones.filter(([_id, group]) => {
+    const status = group?.status || {};
+    return groupIsOn(group) && status.has_sensor === true && status.sensor_control !== false;
+  });
+}
+
+function mainDisplayControlZone(system, acId, zones) {
+  const records = system?.main_display?.records;
+  if (!Array.isArray(records)) return null;
+  const acRecords = records
+    .filter((record) => Number(record?.ac) === Number(acId) && record?.hidden !== true)
+    .reverse();
+  for (const record of acRecords) {
+    const rawBytes = String(record?.raw || "").split(/\s+/).map((item) => Number.parseInt(item, 16)).filter(Number.isFinite);
+    const sensor = finite(record?.sign_sensor) ?? finite(rawBytes[2]);
+    const groupId = finite(record?.sign_group) ?? (sensor !== null && sensor >= 224 ? sensor - 224 : sensor);
+    if (groupId === null || groupId < 0 || groupId > 15) continue;
+    const entry = zones.find(([id]) => Number(id) === groupId);
+    if (entry && groupIsOn(entry[1]) && zoneRoomTemperature(entry[0], entry[1]) !== null) return entry;
+  }
+  return null;
+}
+
+function selectedControlZone(ac, zones, system, acId) {
+  const displayZone = mainDisplayControlZone(system, acId, zones);
+  if (displayZone) return displayZone;
+
+  const activeZones = activeSensorZoneEntries(zones);
+  const controlTemperature = finite(ac?.status?.sensor_temp);
+  if (controlTemperature !== null) {
+    const matchingZones = activeZones.filter(([_id, group]) => zoneRoomTemperature(_id, group) === controlTemperature);
+    if (matchingZones.length === 1) return matchingZones[0];
+  }
+
+  const selector = finite(ac?.settings?.ctrl_thermostat);
+  if (selector !== null && selector < 253) {
+    const mapped = zones.find(([_id, group]) => {
+      const status = group?.status || {};
+      return status.has_sensor === true && (
+        Number(status.sensor_id) === selector ||
+        Number(group?.grouping?.thermostat) === selector
+      );
+    });
+    if (mapped && zoneRoomTemperature(mapped[0], mapped[1]) !== null) return mapped;
+  }
+
+  return activeZones.length === 1 ? activeZones[0] : null;
+}
+
+export function resolveTemperatureState({system = {}, ac = {}, acId = 0, zones = [], integrations = {}} = {}) {
+  const status = ac?.status || {};
+  const settings = ac?.settings || {};
+  const activeZones = zones.filter(([_id, group]) => groupIsOn(group));
+  const sensorZones = zones.filter(([_id, group]) => group?.status?.has_sensor === true);
+  const controlZone = selectedControlZone(ac, zones, system, acId);
+  const haIndoorTemperature = finite(integrations?.indoor?.state?.temperature);
+  const activeZoneTemperature = average(activeZones.map(([id, group]) => zoneRoomTemperature(id, group)));
+  const allZoneTemperature = average(sensorZones.map(([id, group]) => zoneRoomTemperature(id, group)));
+  const indoor = haIndoorTemperature !== null
+    ? temperatureReading(haIndoorTemperature, "Indoor", "ha_indoor")
+    : activeZoneTemperature !== null
+      ? temperatureReading(activeZoneTemperature, "Indoor", "active_zone_average")
+      : temperatureReading(allZoneTemperature, "Indoor", "zone_average");
+  const control = controlZone
+    ? temperatureReading(status.sensor_temp, zoneName(controlZone[0], controlZone[1]), "ac_control_echo", {zoneId: Number(controlZone[0])})
+    : temperatureReading(status.sensor_temp, "AC", "ac_sensor");
+  const setpoint = temperatureReading(
+    status.setpoint,
+    "Setpoint",
+    "ac_status"
+  );
+  return {
+    indoor,
+    control,
+    setpoint,
+    min: finite(settings.min_setpoint) ?? 16,
+    max: finite(settings.max_setpoint) ?? 30
+  };
+}
+
 export function firstSensorName(zones) {
   const withSensor = zones.find(([_id, group]) => group?.status?.has_sensor);
   return withSensor?.[1]?.grouping?.thermostat_name || (withSensor ? `${zoneName(withSensor[0], withSensor[1])} Sensor` : "Room Sensor");
@@ -128,10 +222,9 @@ export function controlRoomName(ac, zones) {
   }
 
   if (activeSensorZones.length === 1) return zoneName(activeSensorZones[0][0], activeSensorZones[0][1]);
-  if (activeSensorZones.length > 1) return "Averaged Zones";
+  if (activeSensorZones.length > 1) return "AC";
 
-  const firstSensorZone = zones.find(([_id, group]) => group?.status?.has_sensor === true);
-  return firstSensorZone ? zoneName(firstSensorZone[0], firstSensorZone[1]) : zoneName(zones[0]?.[0] ?? 0, zones[0]?.[1] || {});
+  return "AC";
 }
 
 export function mainDisplayRoomName(system, ac, acId, zones) {
@@ -148,7 +241,7 @@ export function mainDisplayRoomName(system, ac, acId, zones) {
       if (group) return controlRoomName(ac, zones);
       return `Zone ${groupId + 1}`;
     }
-    if (sensor === 254) return "Average";
+    if (sensor === 254) return "AC";
     if (sensor === 144) return "Touchpad 1";
     if (sensor === 145) return "Touchpad 2";
   }
@@ -156,20 +249,13 @@ export function mainDisplayRoomName(system, ac, acId, zones) {
 }
 
 export function thermostatFor(ac, zones, integrations = {}) {
-  const status = ac?.status || {};
-  const settings = ac?.settings || {};
-  const sensorZones = zones.map(([_id, group]) => group?.status || {}).filter((item) => item.has_sensor);
-  const activeSensorZones = sensorZones.filter((item) => item.sensor_control && (item.power_code === 1 || item.power_name === "on"));
-  const haIndoorTemperature = finite(integrations?.indoor?.state?.temperature);
-  const activeZoneTemperature = average(zones
-    .filter(([_id, group]) => groupIsOn(group))
-    .map(([_id, group]) => group?.status?.temperature));
-  const allZoneTemperature = average(zones.map(([_id, group]) => group?.status?.temperature));
+  const temperatures = resolveTemperatureState({ac, zones, integrations});
   return {
-    min: finite(settings.min_setpoint) ?? 16,
-    max: finite(settings.max_setpoint) ?? 30,
-    current: haIndoorTemperature ?? activeZoneTemperature ?? allZoneTemperature,
-    setpoint: average(activeSensorZones.map((item) => item.setpoint)) ?? finite(status.setpoint)
+    min: temperatures.min,
+    max: temperatures.max,
+    current: temperatures.indoor.value,
+    setpoint: temperatures.setpoint.value,
+    temperatures
   };
 }
 

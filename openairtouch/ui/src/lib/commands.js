@@ -194,6 +194,14 @@ export function preferencePayload(card, system = {}) {
   };
 }
 
+export function runtimeConfigPayload(card, controller = {}) {
+  const fallback = controller?.config?.fallback_touchpad_temperature ?? 23;
+  const input = card?.querySelector('[data-field="fallback-touchpad-temperature"]');
+  return {
+    fallback_touchpad_temperature: Number(input?.value || fallback || 23)
+  };
+}
+
 export function parametersPayload(card, system = {}, groupEntries = []) {
   const selectBool = (field, fallback = false) => {
     const input = card?.querySelector(`[data-field="${field}"]`);
@@ -222,16 +230,19 @@ export function parametersPayload(card, system = {}, groupEntries = []) {
 }
 
 export function servicePayload(card) {
+  const checkbox = (field) => card?.querySelector(`[data-field="${field}"]`)?.checked === true;
+  const hiddenBool = (field) => card?.querySelector(`[data-field="${field}"]`)?.value === "true";
+
   return {
     company: card?.querySelector("#service-company-input")?.value || "",
     phone: card?.querySelector("#service-phone-input")?.value || "",
-    show_service_due: card?.querySelector('[data-field="show-service-due"]')?.value === "true",
-    service_due_locked: card?.querySelector('[data-field="service-due-locked"]')?.value === "true",
-    filter_clean_due: card?.querySelector('[data-field="filter-clean-due"]')?.value === "true",
-    maintenance_due: card?.querySelector('[data-field="maintenance-due"]')?.value === "true",
-    months: Number(card?.querySelector('[data-field="service-months"]')?.value || 0),
-    days: Number(card?.querySelector('[data-field="service-days"]')?.value || 0),
-    runtime_hours: Number(card?.querySelector('[data-field="service-runtime-hours"]')?.value || 0)
+    show_service_due: hiddenBool("show-service-due"),
+    service_due_locked: checkbox("service-half-year"),
+    filter_clean_due: checkbox("service-one-year"),
+    maintenance_due: checkbox("service-two-years"),
+    months: Number(card?.querySelector('[data-field="service-display-days"]')?.value || 0),
+    days: Number(card?.querySelector('[data-field="service-running-days"]')?.value || 0),
+    runtime_hours: Number(card?.querySelector('[data-field="service-client-number"]')?.value || 0)
   };
 }
 

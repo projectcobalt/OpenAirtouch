@@ -17,8 +17,8 @@
   }
 </script>
 
-<article class="summary-card editor-card" data-parameters-card>
-  <div class="card-title">AirTouch General</div>
+<section class="settings-section" data-parameters-card>
+  <div class="section-title">AirTouch General</div>
   <div class="field-grid">
     <label class="field">Total Zones<input data-field="group-count" type="number" min="1" max="16" value={system.group_count ?? (groupEntries.length || 1)} /></label>
     <label class="field">Damper Motor RPM<input data-field="damper-rpm" type="number" min="0.1" max="2.5" step="0.1" value={(Number(system.damper_rpm ?? 100) / 100).toFixed(1)} /></label>
@@ -39,7 +39,6 @@
       </select>
     </label>
     <label class="field">Lock Zones To Temp Control<select data-field="lock-to-temp-control"><option value="true" selected={system.lock_to_temp_control}>On</option><option value="false" selected={!system.lock_to_temp_control}>Off</option></select></label>
-    <label class="field">Show Control Sensor Temperature<select data-field="param-show-control-sensor"><option value="true" selected={system.show_control_sensor}>On</option><option value="false" selected={!system.show_control_sensor}>Off</option></select></label>
   </div>
   <div class="service-actions"><button type="button" class="action-primary" on:click={saveParameters}>Save General</button></div>
-</article>
+</section>

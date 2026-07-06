@@ -102,7 +102,7 @@ def format_decoded_detail(decoded: dict[str, Any], packet: AirTouchPacket) -> st
     if kind == "sensor_list":
         return f"sensors={decoded.get('sensor_addresses', [])}"
     if kind == "touchpad_temperature":
-        return f"touchpad_temp={decoded.get('temperature')} raw=0x{decoded.get('temperature_raw', 0):02X}"
+        return f"touchpad_temp={decoded.get('temperature')} heartbeat_raw={decoded.get('heartbeat_raw')} payload={decoded.get('raw')}"
     if kind == "led_response":
         return f"led=0x{decoded.get('led_code', 0):02X} {decoded.get('led_name')}"
     if kind == "group_name":

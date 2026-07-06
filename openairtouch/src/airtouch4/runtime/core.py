@@ -31,7 +31,8 @@ class RuntimeConfig:
     active: bool = True
     detect_seconds: float = 3.0
     heartbeat_interval: float = 30.0
-    heartbeat_payload: bytes = bytes.fromhex("00 EA 00")
+    heartbeat_payload: bytes | None = None
+    touchpad_temperature: float = 23.0
     source_address: int | None = None
     auto_address: bool = True
     force_source_address: bool = False
@@ -90,6 +91,7 @@ class AirTouchRuntime:
             self.session = TouchscreenSession(
                 src=self.config.source_address or ADDR_TOUCHPAD_1,
                 heartbeat_payload=self.config.heartbeat_payload,
+                touchpad_temperature=self.config.touchpad_temperature,
                 heartbeat_interval=self.config.heartbeat_interval,
                 auto_address=False,
             )
@@ -101,6 +103,9 @@ class AirTouchRuntime:
         if self.transactions is None:
             self.transactions = TransactionQueue()
         self.transactions.enqueue_many(tuple(specs))
+
+    def set_touchpad_temperature(self, temperature: float, *, source: str = "runtime", detail: dict | None = None) -> None:
+        self._session.set_touchpad_temperature(temperature, source=source, detail=detail)
 
     def start(self, *, now: float | None = None) -> list[RuntimeEvent]:
         """Run the active-mode address-detection prelude."""
@@ -186,6 +191,11 @@ class AirTouchRuntime:
                 "address_assigned": self.address_assigned,
                 "src": f"0x{self._session.src:02X}",
                 "dest": f"0x{self._session.dest:02X}",
+                "touchpad_temperature": self._session.touchpad_temperature,
+                "touchpad_temperature_source": self._session.touchpad_temperature_source,
+                "touchpad_temperature_detail": self._session.touchpad_temperature_detail,
+                "heartbeat_payload": self._session.current_heartbeat_payload().hex(" ").upper(),
+                "heartbeat_payload_override": self._session.heartbeat_payload is not None,
                 "rx_count": self.rx_count,
                 "tx_count": self.tx_count,
                 "uptime_seconds": int(time.monotonic() - self.started_monotonic),

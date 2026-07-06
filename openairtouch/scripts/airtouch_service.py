@@ -19,7 +19,6 @@ from airtouch4.service.controller import RuntimeController, RuntimeControllerCon
 from airtouch4.service.error_resolver import RemoteErrorResolverConfig
 from airtouch4.service.ha_client import HomeAssistantApiConfig
 from airtouch4.session.touchscreen import parse_hex_payload
-from airtouch4.payloads.common import encode_internal_temperature
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bus-log", type=Path, help="Optional raw RX/TX/init JSONL log.")
     parser.add_argument("--detect-seconds", type=float, default=3.0)
     parser.add_argument("--heartbeat-interval", type=float, default=30.0)
-    parser.add_argument("--touchpad-temperature", type=float, default=25.0)
+    parser.add_argument("--touchpad-temperature", type=float, default=23.0)
     parser.add_argument("--heartbeat-payload", default="")
     parser.add_argument("--source-address", default="auto", help="Preferred touchpad source address: auto, 0x90, or 0x91.")
     parser.add_argument("--force-source-address", action="store_true")
@@ -68,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--adaptive-compressor-groups", default="")
     parser.add_argument("--adaptive-config-path", type=Path, default=Path("/data/adaptive_config.json"))
     parser.add_argument("--adaptive-learning-path", type=Path, default=Path("/data/adaptive_learning.json"))
+    parser.add_argument("--runtime-config-path", type=Path, default=Path("/data/runtime_config.json"))
     parser.add_argument("--remote-error-resolution", action="store_true")
     parser.add_argument("--remote-error-cache", type=Path)
     parser.add_argument("--remote-error-cache-days", type=float, default=2.0)
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     heartbeat_payload = (
         parse_hex_payload(args.heartbeat_payload)
         if args.heartbeat_payload.strip()
-        else bytes((0x00, encode_internal_temperature(args.touchpad_temperature), 0x00))
+        else None
     )
 
     runtime_config = RuntimeConfig(
@@ -105,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         detect_seconds=args.detect_seconds,
         heartbeat_interval=args.heartbeat_interval,
         heartbeat_payload=heartbeat_payload,
+        touchpad_temperature=args.touchpad_temperature,
         source_address=parse_source_address(args.source_address),
         auto_address=True,
         force_source_address=args.force_source_address,
@@ -153,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             adaptive_config_path=args.adaptive_config_path,
             adaptive_learning_path=args.adaptive_learning_path,
+            runtime_config_path=args.runtime_config_path,
             error_resolver=RemoteErrorResolverConfig(
                 enabled=args.remote_error_resolution,
                 cache_path=args.remote_error_cache,

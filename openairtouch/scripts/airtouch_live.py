@@ -36,7 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--detect-seconds", type=float, default=3.0, help="How long to listen after address detection request.")
     parser.add_argument("--heartbeat", action="store_true", help="Send 0x26 heartbeat/temp frames every interval.")
     parser.add_argument("--heartbeat-interval", type=float, default=30.0, help="Heartbeat interval in seconds.")
-    parser.add_argument("--heartbeat-payload", default="00 EA 00", help="Heartbeat payload hex. Default: '00 EA 00'.")
+    parser.add_argument("--touchpad-temperature", type=float, default=23.0, help="Synthetic touchpad temperature in degrees C.")
+    parser.add_argument("--heartbeat-payload", default="", help="Optional raw heartbeat payload hex override.")
     parser.add_argument("--sync", action="store_true", help="Send zero-length startup sync requests once.")
     parser.add_argument("--init", action="store_true", help="Run APK-like sequential init with retry/fallback tracking.")
     parser.add_argument(
@@ -75,7 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     session = TouchscreenSession(
         src=args.touchpad_addr,
         dest=args.mainboard_addr,
-        heartbeat_payload=parse_hex_payload(args.heartbeat_payload),
+        heartbeat_payload=parse_hex_payload(args.heartbeat_payload) if args.heartbeat_payload.strip() else None,
+        touchpad_temperature=args.touchpad_temperature,
         heartbeat_interval=args.heartbeat_interval,
         sync_commands=parse_command_list(args.sync_commands),
         auto_address=args.detect_address,

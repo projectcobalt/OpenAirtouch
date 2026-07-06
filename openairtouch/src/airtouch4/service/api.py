@@ -38,7 +38,7 @@ def create_app(controller: RuntimeController):
         finally:
             controller.stop()
 
-    app = FastAPI(title="OpenAirTouch", version="0.8.1", lifespan=lifespan)
+    app = FastAPI(title="OpenAirTouch", version="0.8.2", lifespan=lifespan)
     if StaticFiles is not None and ASSETS_DIR.exists():
         app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
     if StaticFiles is not None and WEB_ASSETS_DIR.exists():
@@ -71,6 +71,14 @@ def create_app(controller: RuntimeController):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"adaptive": config}
+
+    @app.post("/api/runtime")
+    async def runtime_config(body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            config = controller.update_runtime_config(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"runtime": config}
 
     @app.post("/api/adaptive/model")
     async def adaptive_model(body: dict[str, Any]) -> dict[str, Any]:

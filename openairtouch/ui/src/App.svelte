@@ -25,6 +25,7 @@
     parametersPayload,
     preferencePayload,
     programPayload,
+    runtimeConfigPayload,
     sensorTemperaturePayload,
     servicePayload,
     spillPayload,
@@ -50,6 +51,7 @@
     groupIsSpill as selectGroupIsSpill,
     groupsFromBitmap as selectGroupsFromBitmap,
     mainDisplayRoomName as selectMainDisplayRoomName,
+    resolveTemperatureState as selectResolveTemperatureState,
     sensorKindLabel as selectSensorKindLabel,
     sensorRowsFromState as selectSensorRowsFromState,
     splitGroupBitmap as selectSplitGroupBitmap,
@@ -261,6 +263,10 @@
 
   function thermostatFor(ac, zones) {
     return selectThermostatFor(ac, zones, integrations);
+  }
+
+  function resolveTemperatureState(ac, acId, zones) {
+    return selectResolveTemperatureState({system, ac, acId, zones, integrations});
   }
 
   function acSourceHint(ac, zones, thermostat) {
@@ -661,7 +667,7 @@
       headline,
       summary,
       fields: [
-        adaptiveMetric("Outside", outside === null ? "-" : tempText(outside, 1)),
+        adaptiveMetric("Outside", outside === null ? "-" : tempText(outside)),
         adaptiveMetric("Nice Until", weather.nice_until ? adaptiveUntil(weather.nice_until) : "-"),
         adaptiveMetric("Pause", weather.pause_active ? "Active" : weather.pause_recommended ? "Recommended" : "Clear"),
         adaptiveMetric("Fresh Air", weather.outside_air_intent || quality.fan_recommended ? "Recommended" : "Not Requested")
@@ -673,7 +679,7 @@
     const modeIntent = adaptive.mode_intent || {};
     const target = finite(adaptive.recommended_target ?? modeIntent.target ?? modeIntent.setpoint);
     const runtime = finite(adaptive.runtime_hours ?? adaptive.projected_runtime_hours ?? modeIntent.projected_runtime_hours);
-    const headline = modeIntent.name ? title(modeIntent.name) : target !== null ? `Recommended Target: ${target.toFixed(0)}°` : adaptiveReadyCount ? "Zone Models Ready" : "Waiting For Zones";
+    const headline = modeIntent.name ? title(modeIntent.name) : target !== null ? `Recommended Target: ${tempText(target)}` : adaptiveReadyCount ? "Zone Models Ready" : "Waiting For Zones";
     const summary = modeIntent.reason || adaptive.recommendations?.[0] || (adaptiveReadyCount ? `${adaptiveReadyCount} zone models are ready` : "Model Learning: Waiting For More Samples");
     return {
       headline,
@@ -698,7 +704,7 @@
       headline: strategy === "hybrid" && heatCool ? "Damper Plan" : "AirTouch Has Control",
       summary: activePlan || (heatCool ? "Zone airflow preview will appear when adaptive has a plan" : "Dry and Fan keep thermal and air-quality previews separate"),
       fields: [
-        adaptiveMetric("Control Temperature", heatCool && selectedThermostat.current !== null ? tempText(selectedThermostat.current, 1) : "-"),
+        adaptiveMetric("Control Temperature", heatCool && selectedThermostat.current !== null ? tempText(selectedThermostat.current) : "-"),
         adaptiveMetric("Zone Airflow", activePlan || "-"),
         adaptiveMetric("Strategy", title(strategy)),
         adaptiveMetric("Outside Air Zones", (adaptiveConfig.outside_air_zones || []).length || "-")
@@ -713,9 +719,9 @@
       adaptiveMetric("Updates", zone.ekf_updates ?? "-"),
       adaptiveMetric("Confidence", zone.confidence === undefined ? "-" : percentText(Number(zone.confidence) * 100)),
       adaptiveMetric("Error", zone.prediction_std === undefined ? "-" : tempText(zone.prediction_std, 2)),
-      adaptiveMetric("Drift", zone.passive_drift_per_hour === undefined ? "-" : `${Number(zone.passive_drift_per_hour).toFixed(2)}°/h`),
-      adaptiveMetric("Response", zone.active_response_per_hour === undefined ? "-" : `${Number(zone.active_response_per_hour).toFixed(2)}°/h`),
-      adaptiveMetric("Outside", zone.outside_coupling_per_hour === undefined ? "-" : `${Number(zone.outside_coupling_per_hour).toFixed(2)}°/h`)
+      adaptiveMetric("Drift", zone.passive_drift_per_hour === undefined ? "-" : `${tempText(zone.passive_drift_per_hour, 2)}/h`),
+      adaptiveMetric("Response", zone.active_response_per_hour === undefined ? "-" : `${tempText(zone.active_response_per_hour, 2)}/h`),
+      adaptiveMetric("Outside", zone.outside_coupling_per_hour === undefined ? "-" : `${tempText(zone.outside_coupling_per_hour, 2)}/h`)
     ];
   }
 
@@ -772,6 +778,30 @@
     sendCommand("preference", preferencePayload(card, system), "preference");
   }
 
+  async function saveRuntimeConfig(event) {
+    const card = event.currentTarget.closest("[data-runtime-config-card]");
+    pendingKey = "runtime-config";
+    error = "";
+    try {
+      const response = await fetch(apiPath("runtime"), {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(runtimeConfigPayload(card, controller))
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || `Runtime update failed: ${response.status}`);
+      }
+      setTimeout(load, 350);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      setTimeout(() => {
+        pendingKey = "";
+      }, 650);
+    }
+  }
+
   function saveParameters(event) {
     const card = event.currentTarget.closest("[data-parameters-card]");
     sendCommand("parameters", parametersPayload(card, system, groupEntries), "parameters");
@@ -780,6 +810,11 @@
   function saveService(event) {
     const card = event.currentTarget.closest("[data-service-system]");
     sendCommand("service", servicePayload(card), "service");
+  }
+
+  function resetServiceCounter(event) {
+    const card = event.currentTarget.closest("[data-service-system]");
+    sendCommand("service", {...servicePayload(card), days: 0}, "service-counter-reset");
   }
 
   function applyThemePreference(theme = selectedTheme) {
@@ -918,7 +953,14 @@
   $: selectedFanOptions = configuredFans(selectedSettings);
   $: selectedZones = (groupEntries, activeZoneEntriesForAc(selectedAc));
   $: selectedGroupEntries = (groupEntries, groupEntriesForAc(selectedAc, {includeSpill: true}));
-  $: selectedThermostat = thermostatFor(selectedAc, selectedZones);
+  $: selectedTemperatureState = resolveTemperatureState(selectedAc, selectedAcId, selectedZones);
+  $: selectedThermostat = {
+    min: selectedTemperatureState.min,
+    max: selectedTemperatureState.max,
+    current: selectedTemperatureState.indoor.value,
+    setpoint: selectedTemperatureState.setpoint.value,
+    temperatures: selectedTemperatureState
+  };
   $: selectedSensorName = firstSensorName(selectedZones);
   $: selectedRoomName = mainDisplayRoomName(selectedAc, selectedAcId, selectedZones);
   $: selectedSourceHint = acSourceHint(selectedAc, selectedZones, selectedThermostat);
@@ -957,8 +999,8 @@
   <RoomPanel
     {controller}
     {integrations}
-    {selectedRoomName}
     {selectedThermostat}
+    {selectedTemperatureState}
   />
 <section class="control-stack">
     {#if error || alerts.length}
@@ -971,6 +1013,7 @@
         {selectedAcId}
         {selectedStatus}
         {selectedThermostat}
+        {selectedTemperatureState}
         {selectedHistoryEntries}
         selectedHistoryPath={selectedTemperatureChart.historyPath}
         selectedPlanPath={selectedTemperatureChart.planPath}
@@ -980,8 +1023,10 @@
         selectedCallLabel={selectedTemperatureChart.callLabel}
         {selectedModeOptions}
         {selectedFanOptions}
+        {selectedRoomName}
         {selectedSensorName}
         {selectedZones}
+        {selectedGroupEntries}
         {activeZoneCount}
         {averageDamper}
         {alerts}
@@ -1074,6 +1119,7 @@
         {setTheme}
         {setShowSupportDiagnostics}
         {savePreference}
+        {saveRuntimeConfig}
         {pairSensor}
         {sensorKindLabel}
         {saveSensorTemperature}
@@ -1090,6 +1136,7 @@
         {saveTurboGroup}
         {saveParameters}
         {saveService}
+        {resetServiceCounter}
         onView={(view) => activeServiceView = view}
       />
     {/if}
