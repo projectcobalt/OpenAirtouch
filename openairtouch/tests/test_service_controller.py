@@ -356,6 +356,24 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(record["cmd"], "0x26")
         self.assertIn("summary", record)
 
+    def test_event_record_translates_fallback_command_names(self) -> None:
+        packet = AirTouchPacket(
+            dest=0x80,
+            src=0x91,
+            packet_id=0x22,
+            command=0x1F,
+            payload=b"",
+            raw_mode=True,
+        )
+        event = RuntimeEvent("tx", packet=packet, wire=packet.encode(stuff_raw=True))
+
+        record = _event_record(event)
+
+        self.assertEqual(record["cmd_name"], "CMD_EXPANDED")
+        self.assertEqual(record["plain"]["category"], "bus")
+        self.assertIn("Expanded", record["summary"])
+        self.assertNotIn("CMD_EXPANDED", record["summary"])
+
     def test_event_record_adds_plain_english_ac_status(self) -> None:
         packet = AirTouchPacket(
             dest=0x90,

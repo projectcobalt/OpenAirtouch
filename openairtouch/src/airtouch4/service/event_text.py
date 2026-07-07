@@ -61,7 +61,7 @@ def describe_event(record: dict[str, Any]) -> dict[str, Any]:
     cmd = record.get("cmd_name") or record.get("cmd")
     direction = str(record.get("direction") or event or "event").upper()
     if cmd:
-        return _plain("bus", f"{direction} {cmd}")
+        return _plain("bus", f"{direction} {_command_label(cmd)}")
     return _plain("event", _display_text(record.get("message") or event or "Runtime Event"))
 
 
@@ -383,6 +383,16 @@ def _hex_or_text(value: Any) -> str:
     if number is None:
         return _text(value, "-")
     return f"0x{number:02X}"
+
+
+def _command_label(value: Any) -> str:
+    text = _text(value, "Unknown Command")
+    if text == "UNKNOWN":
+        return "Unknown Command"
+    if text.startswith("CMD_"):
+        text = text[4:]
+    text = text.lower()
+    return _display_text(text)
 
 
 def _title(value: Any) -> str:
