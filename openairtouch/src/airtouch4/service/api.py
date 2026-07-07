@@ -9,7 +9,6 @@ from typing import Any
 
 from .commands import CommandRequestError, build_transaction
 from .controller import RuntimeController
-from .ui import INDEX_HTML
 
 ASSETS_DIR = Path(__file__).with_name("assets")
 WEB_DIR = Path(__file__).with_name("web")
@@ -29,6 +28,8 @@ except ModuleNotFoundError:  # pragma: no cover - import guard
 def create_app(controller: RuntimeController):
     if FastAPI is None:  # pragma: no cover - import guard
         raise RuntimeError("FastAPI is required for the service API. Install dependencies from requirements.txt")
+    if not WEB_INDEX.exists():
+        raise RuntimeError(f"OpenAirTouch UI build is missing: {WEB_INDEX}")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -52,9 +53,7 @@ def create_app(controller: RuntimeController):
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        if WEB_INDEX.exists():
-            return WEB_INDEX.read_text(encoding="utf-8")
-        return INDEX_HTML
+        return WEB_INDEX.read_text(encoding="utf-8")
 
     @app.get("/api/state")
     def state() -> dict[str, Any]:

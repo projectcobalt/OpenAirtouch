@@ -8,8 +8,8 @@ Current design direction: do not treat Aeros as the visual target unless explici
 
 ## Source Material
 
-- `../src/airtouch4/service/ui.py` in the Aeros worktree is the current parity baseline.
-- `openairtouch/tests/test_service_ui.py` in the Aeros worktree is the feature-presence contract.
+- The retired embedded FastAPI UI is historical reference only; the Svelte source and built `service/web` assets are the active UI.
+- Svelte feature parity should be verified against Svelte source/tests and the backend API/WebSocket contract, not the removed embedded UI.
 - `openairtouch/docs/adaptive-control-flow.md` in the adaptive worktree defines adaptive mode/strategy behavior.
 - `openairtouch/docs/adaptive-ui-surface.md` in the sensor-zone-mapping worktree defines adaptive copy, chart layers, ownership language, and structured fields.
 

@@ -7,12 +7,14 @@ import threading
 import time
 import unittest
 import warnings
+from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import uvicorn
 import websockets
 
-from airtouch4.service.api import WEB_DIR, create_app
+from airtouch4.service.api import WEB_INDEX, create_app
 
 
 class FakeController:
@@ -100,8 +102,20 @@ class ServiceApiTests(unittest.TestCase):
         paths = {route.path for route in app.routes}
 
         self.assertIn("/assets", paths)
-        if WEB_DIR.exists():
-            self.assertIn("/ui", paths)
+        self.assertIn("/ui", paths)
+
+    def test_root_serves_built_svelte_index(self) -> None:
+        app = create_app(FakeController())
+        route = next(route for route in app.routes if route.path == "/")
+
+        self.assertEqual(route.endpoint(), WEB_INDEX.read_text(encoding="utf-8"))
+
+    def test_missing_svelte_build_fails_startup(self) -> None:
+        missing_index = Path(__file__).with_name("missing-svelte-index.html")
+
+        with patch("airtouch4.service.api.WEB_INDEX", missing_index):
+            with self.assertRaisesRegex(RuntimeError, "UI build is missing"):
+                create_app(FakeController())
 
     def test_websocket_sends_initial_state_then_batched_events_and_state(self) -> None:
         controller = FakeController()

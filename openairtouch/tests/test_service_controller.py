@@ -282,7 +282,7 @@ class RuntimeControllerTests(unittest.TestCase):
                 weather=HomeAssistantApiConfig(weather_entity="weather.micro_weather_station"),
             )
         )
-        controller._ha_client = FakeWeatherClient(
+        controller._integrations.client = FakeWeatherClient(
             [
                 {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": None},
                 {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": 17.1},
@@ -291,7 +291,7 @@ class RuntimeControllerTests(unittest.TestCase):
 
         controller._poll_weather()
         first = controller.snapshot()["integrations"]["weather"]
-        controller._next_weather_poll = 0.0
+        controller._integrations._next_poll = 0.0
         controller._poll_weather()
         second = controller.snapshot()["integrations"]["weather"]
 

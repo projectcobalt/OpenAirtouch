@@ -25,7 +25,8 @@ from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, Tcp
 from .adaptive import AdaptiveConfig, AdaptiveController
 from .error_resolver import RemoteErrorResolver, RemoteErrorResolverConfig
 from .event_text import describe_event
-from .ha_client import HomeAssistantApiClient, HomeAssistantApiConfig
+from .ha_client import HomeAssistantApiConfig
+from .integrations import HomeAssistantIntegrationPoller
 from .touchpad_temperature import TouchpadTemperatureResult, resolve_touchpad_temperature
 
 TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
@@ -76,20 +77,10 @@ class RuntimeController:
         self._command_queue: queue.Queue[TransactionSpec] = queue.Queue()
         self._status = "stopped"
         self._error: str | None = None
-        self._weather: dict[str, Any] | None = None
-        self._weather_error: str | None = None
-        self._forecast: dict[str, Any] | None = None
-        self._forecast_error: str | None = None
-        self._indoor: dict[str, Any] | None = None
-        self._indoor_error: str | None = None
-        self._solar: dict[str, Any] | None = None
-        self._solar_error: str | None = None
-        self._ac_telemetry: dict[str, Any] | None = None
-        self._ac_telemetry_error: str | None = None
-        self._sun: dict[str, Any] | None = None
-        self._sun_error: str | None = None
-        self._next_weather_poll = 0.0
-        self._ha_client = HomeAssistantApiClient(config.weather)
+        self._integrations = HomeAssistantIntegrationPoller(
+            config.weather,
+            poll_interval=config.weather_poll_interval,
+        )
         self._error_resolver = RemoteErrorResolver(config.error_resolver)
         self._runtime_config = _load_runtime_config(config.runtime, config.runtime_config_path)
         self._adaptive_config_path = config.adaptive_config_path
@@ -133,6 +124,12 @@ class RuntimeController:
             runtime_snapshot = None if self._runtime is None else self._runtime.snapshot()
             if runtime_snapshot is not None:
                 _add_error_displays(runtime_snapshot, self._error_resolver)
+            integrations = self._integrations.snapshot()
+            integrations.update({
+                "error_resolver": self._error_resolver.status(),
+                "adaptive": self._adaptive.status(),
+                "touchpad_temperature": _touchpad_temperature_status(self._touchpad_temperature),
+            })
             return {
                 "controller": {
                     "status": self._status,
@@ -142,47 +139,7 @@ class RuntimeController:
                     "datetime_sync": self._datetime_sync_status(runtime_snapshot),
                 },
                 "runtime": runtime_snapshot,
-                "integrations": {
-                    "weather": {
-                        "entity_id": self.config.weather.weather_entity,
-                        "state": self._weather,
-                        "error": self._weather_error,
-                    },
-                    "indoor": {
-                        "temperature_entity_id": self.config.weather.indoor_temperature_entity,
-                        "humidity_entity_id": self.config.weather.indoor_humidity_entity,
-                        "co2_entity_id": self.config.weather.indoor_co2_entity,
-                        "state": self._indoor,
-                        "error": self._indoor_error,
-                    },
-                    "forecast": {
-                        "entity_id": self.config.weather.forecast_weather_entity,
-                        "state": self._forecast,
-                        "error": self._forecast_error,
-                    },
-                    "solar": {
-                        "irradiance_entity_id": self.config.weather.solar_irradiance_entity,
-                        "cloud_cover_entity_id": self.config.weather.cloud_cover_entity,
-                        "state": self._solar,
-                        "error": self._solar_error,
-                    },
-                    "ac_telemetry": {
-                        "power_entity_id": self.config.weather.ac_power_entity,
-                        "running_entity_id": self.config.weather.ac_running_entity,
-                        "frequency_entity_id": self.config.weather.ac_frequency_entity,
-                        "return_air_temp_entity_id": self.config.weather.ac_return_air_temp_entity,
-                        "supply_air_temp_entity_id": self.config.weather.ac_supply_air_temp_entity,
-                        "state": self._ac_telemetry,
-                        "error": self._ac_telemetry_error,
-                    },
-                    "sun": {
-                        "state": self._sun,
-                        "error": self._sun_error,
-                    },
-                    "error_resolver": self._error_resolver.status(),
-                    "adaptive": self._adaptive.status(),
-                    "touchpad_temperature": _touchpad_temperature_status(self._touchpad_temperature),
-                },
+                "integrations": integrations,
             }
 
     def health(self) -> dict[str, Any]:
@@ -356,133 +313,13 @@ class RuntimeController:
             self._mark_changed_locked()
 
     def _poll_weather(self) -> None:
-        weather_entity = self.config.weather.weather_entity.strip()
-        forecast_entity = self.config.weather.forecast_weather_entity.strip()
-        indoor_configured = (
-            bool(self.config.weather.indoor_temperature_entity.strip())
-            or bool(self.config.weather.indoor_humidity_entity.strip())
-            or bool(self.config.weather.indoor_co2_entity.strip())
-        )
-        solar_configured = (
-            bool(self.config.weather.solar_irradiance_entity.strip())
-            or bool(self.config.weather.cloud_cover_entity.strip())
-        )
-        telemetry_configured = _telemetry_configured(self.config.weather)
-        sun_needed = bool(weather_entity) or solar_configured
-        if not weather_entity and not forecast_entity and not indoor_configured and not solar_configured and not telemetry_configured:
-            return
-        now = time.monotonic()
-        if now < self._next_weather_poll:
-            return
-        self._next_weather_poll = now + max(10.0, self.config.weather_poll_interval)
-        if weather_entity:
-            try:
-                weather = self._ha_client.weather_snapshot()
-                weather_error = _weather_data_quality_error(weather, weather_entity)
-                with self._lock:
-                    self._weather = weather
-                    self._weather_error = weather_error
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._weather_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
+        if self._integrations.poll():
             with self._lock:
-                self._weather = None
-                self._weather_error = None
-                self._mark_changed_locked()
-        if forecast_entity:
-            try:
-                forecast = self._ha_client.hourly_forecast_snapshot(current_weather=self._weather)
-                with self._lock:
-                    self._forecast = forecast
-                    self._forecast_error = None
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._forecast_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
-            with self._lock:
-                self._forecast = None
-                self._forecast_error = None
-                self._mark_changed_locked()
-        if indoor_configured:
-            try:
-                indoor = self._ha_client.indoor_snapshot()
-                with self._lock:
-                    self._indoor = indoor
-                    self._indoor_error = None
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._indoor_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
-            with self._lock:
-                self._indoor = None
-                self._indoor_error = None
-                self._mark_changed_locked()
-        if solar_configured:
-            try:
-                solar = self._ha_client.solar_snapshot()
-                with self._lock:
-                    self._solar = solar
-                    self._solar_error = None
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._solar_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
-            with self._lock:
-                self._solar = None
-                self._solar_error = None
-                self._mark_changed_locked()
-        if telemetry_configured:
-            try:
-                telemetry = self._ha_client.ac_telemetry_snapshot()
-                with self._lock:
-                    self._ac_telemetry = telemetry
-                    self._ac_telemetry_error = None
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._ac_telemetry_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
-            with self._lock:
-                self._ac_telemetry = None
-                self._ac_telemetry_error = None
-                self._mark_changed_locked()
-        if sun_needed:
-            try:
-                sun = self._ha_client.sun_snapshot()
-                with self._lock:
-                    self._sun = sun
-                    self._sun_error = None
-                    self._mark_changed_locked()
-            except Exception as exc:  # pragma: no cover - live HA API path
-                with self._lock:
-                    self._sun_error = f"{type(exc).__name__}: {exc}"
-                    self._mark_changed_locked()
-        else:
-            with self._lock:
-                self._sun = None
-                self._sun_error = None
                 self._mark_changed_locked()
 
     def _run_adaptive(self, runtime: AirTouchRuntime) -> None:
         runtime_snapshot = runtime.snapshot()
-        integrations = {
-            "weather": {"state": self._weather, "error": self._weather_error},
-            "indoor": {"state": self._indoor, "error": self._indoor_error},
-            "forecast": {"state": self._forecast, "error": self._forecast_error},
-            "solar": {"state": self._solar, "error": self._solar_error},
-            "ac_telemetry": {"state": self._ac_telemetry, "error": self._ac_telemetry_error},
-            "sun": {"state": self._sun, "error": self._sun_error},
-        }
+        integrations = self._integrations.runtime_inputs()
         specs = self._adaptive.evaluate(runtime_snapshot, integrations)
         if specs:
             self._save_adaptive_learning_now()
@@ -504,9 +341,7 @@ class RuntimeController:
         if self._runtime_config.heartbeat_payload is not None:
             return
         runtime_snapshot = runtime.snapshot()
-        integrations = {
-            "indoor": {"state": self._indoor, "error": self._indoor_error},
-        }
+        integrations = self._integrations.indoor_input()
         result = resolve_touchpad_temperature(
             runtime_snapshot,
             integrations,
@@ -561,7 +396,7 @@ class RuntimeController:
                 self._mark_changed_locked()
 
     def _clock_now(self) -> tuple[datetime, str, str]:
-        time_zone = self._ha_client.home_assistant_timezone()
+        time_zone = self._integrations.home_assistant_timezone()
         if time_zone:
             try:
                 clock = datetime.now(ZoneInfo(time_zone))
@@ -646,27 +481,6 @@ def _event_record(event: RuntimeEvent) -> dict[str, Any]:
     record["plain"] = plain
     record["summary"] = plain["text"]
     return record
-
-
-def _weather_data_quality_error(weather: dict[str, Any] | None, entity_id: str) -> str | None:
-    if not weather:
-        return None
-    if _float_or_none(weather.get("temperature")) is None:
-        return f"{entity_id} has no numeric temperature"
-    return None
-
-
-def _telemetry_configured(config: HomeAssistantApiConfig) -> bool:
-    return any(
-        entity.strip()
-        for entity in (
-            config.ac_power_entity,
-            config.ac_running_entity,
-            config.ac_frequency_entity,
-            config.ac_return_air_temp_entity,
-            config.ac_supply_air_temp_entity,
-        )
-    )
 
 
 def _touchpad_temperature_status(result: TouchpadTemperatureResult) -> dict[str, Any]:
