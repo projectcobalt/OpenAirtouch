@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.5 - 2026-07-07
+
+- Clean the public release tree by moving local planning, research, screenshots, and operator tools out of tracked add-on paths.
+- Keep only runtime scripts in the add-on script directory and neutralize public default transport settings.
+
 ## 0.8.4 - 2026-07-07
 
 - Restore adaptive air quality configuration controls in the Svelte UI.
