@@ -48,10 +48,10 @@
   }
 
   function eventMessage(event) {
+    if (event.message) return event.message;
     if (event.plain?.text) return event.plain.text;
     if (event.summary) return event.summary;
     if (event.plain?.headline) return [event.plain.headline, event.plain.detail].filter(Boolean).join(": ");
-    if (event.message) return event.message;
     if (event.transaction?.name) return event.transaction.name;
     if (event.decoded?.type) return title(event.decoded.type);
     if (event.decoded?.message_type) return title(event.decoded.message_type);
@@ -63,7 +63,7 @@
   }
 
   function busEventRows(events) {
-    const rows = (events || []).slice(-18).reverse().map((event) => {
+    const rows = (events || []).slice(-15).reverse().map((event) => {
       const direction = event.direction ? title(event.direction) : title(event.event || "event");
       const path = event.src && event.dest ? `${direction} ${event.src} -> ${event.dest}` : direction;
       const message = eventMessage(event);
@@ -86,7 +86,7 @@
   <div class="support-strip" aria-label="Support health">
     {#each pills as pill}
       <div class={`support-pill ${pill.state}`}>
-        <span>{pill.label}</span>
+        <span>{pill.label}:</span>
         <strong>{pill.value}</strong>
       </div>
     {/each}

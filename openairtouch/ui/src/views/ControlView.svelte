@@ -24,7 +24,6 @@
   export let selectedSensorName = "-";
   export let selectedZones = [];
   export let selectedGroupEntries = [];
-  export let balanceRows = {};
   export let activeZoneCount = 0;
   export let averageDamper = null;
   export let alerts = [];
@@ -47,7 +46,6 @@
     {selectedTemperatureState}
     {selectedRoomName}
     {selectedGroupEntries}
-    {balanceRows}
     {selectedHistoryEntries}
     {selectedHistoryPath}
     {selectedPlanEntries}
@@ -87,7 +85,6 @@
         {pendingKey}
         isOn={groupIsOn(group)}
         spill={groupIsSpill(group)}
-        balance={balanceRows[String(id)] || {}}
         badges={groupBadges(group)}
         name={zoneName(id, group)}
         roomTemperature={zoneRoomTemperature(id, group)}

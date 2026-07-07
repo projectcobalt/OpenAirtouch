@@ -8,34 +8,34 @@ export const MODE_OPTIONS = [
 
 export const MODE_THEMES = {
   auto: {
-    accent: "#6f8984",
-    accentSoft: "#dfe9e5",
-    ink: "#24312f",
-    muted: "rgba(36, 49, 47, .66)"
+    accent: "#5d927f",
+    accentSoft: "#dfeae5",
+    ink: "#22352f",
+    muted: "rgba(34, 53, 47, .66)"
   },
   heat: {
-    accent: "#c9784d",
-    accentSoft: "#f1dccb",
-    ink: "#3a261d",
-    muted: "rgba(58, 38, 29, .68)"
+    accent: "#b87049",
+    accentSoft: "#efd9cb",
+    ink: "#39261d",
+    muted: "rgba(57, 38, 29, .68)"
   },
   dry: {
-    accent: "#579997",
-    accentSoft: "#d9ece9",
-    ink: "#223837",
-    muted: "rgba(34, 56, 55, .68)"
+    accent: "#52938d",
+    accentSoft: "#d9e9e7",
+    ink: "#213836",
+    muted: "rgba(33, 56, 54, .68)"
   },
   fan: {
-    accent: "#7f916f",
-    accentSoft: "#e1e8d8",
-    ink: "#2b3324",
-    muted: "rgba(43, 51, 36, .68)"
+    accent: "#78909d",
+    accentSoft: "#dde7ec",
+    ink: "#27343b",
+    muted: "rgba(39, 52, 59, .68)"
   },
   cool: {
-    accent: "#5d8fb3",
-    accentSoft: "#dce9f1",
-    ink: "#243543",
-    muted: "rgba(36, 53, 67, .68)"
+    accent: "#528fc1",
+    accentSoft: "#dbe9f3",
+    ink: "#21364a",
+    muted: "rgba(33, 54, 74, .68)"
   }
 };
 

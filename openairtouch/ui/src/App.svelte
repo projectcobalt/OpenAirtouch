@@ -1027,7 +1027,6 @@
         {selectedSensorName}
         {selectedZones}
         {selectedGroupEntries}
-        {balanceRows}
         {activeZoneCount}
         {averageDamper}
         {alerts}

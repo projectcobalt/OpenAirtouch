@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher } from "svelte";
-  import { finite, percentText, tempText } from "../lib/format.js";
+  import { tempText } from "../lib/format.js";
   import SemanticIcon from "./icons/SemanticIcon.svelte";
 
   export let acOptions = [];
@@ -10,7 +10,6 @@
   export let selectedTemperatureState = {};
   export let selectedRoomName = "";
   export let selectedGroupEntries = [];
-  export let balanceRows = {};
   export let selectedHistoryEntries = [];
   export let selectedHistoryPath = "";
   export let selectedPlanEntries = [];
@@ -55,14 +54,7 @@
   $: historyAreaPath = historyAreaFor(smoothPath);
   $: controlRoomTemperature = selectedTemperatureState.control?.value ?? selectedStatus.sensor_temp ?? selectedThermostat.current;
   $: controlRoomLabel = selectedTemperatureState.control?.label || selectedRoomName || "Room";
-  $: liveSpillEntry = selectedGroupEntries.find(([_id, group]) => {
-    const percentage = finite(group?.status?.percentage);
-    return group?.status?.spill_on === true && percentage !== null && percentage > 0;
-  });
-  $: liveSpillCurrent = finite(balanceRows?.[String(liveSpillEntry?.[0])]?.current_value);
-  $: liveSpillPercentage = liveSpillCurrent !== null && liveSpillCurrent > 0
-    ? liveSpillCurrent
-    : finite(liveSpillEntry?.[1]?.status?.percentage);
+  $: spillActive = selectedGroupEntries.some(([_id, group]) => group?.status?.spill_on === true);
   $: planEnd = selectedPlanEntries.at(-1)?.temperature;
   $: planLabel = selectedPlanEntries.length ? tempText(planEnd) : selectedCallLabel || (selectedHistoryEntries.length ? tempText(selectedHistoryEntries[selectedHistoryEntries.length - 1].temperature) : "-");
 </script>
@@ -95,8 +87,8 @@
     <div class="hero-current">
       <div class="hero-readout-label">{controlRoomLabel}</div>
       <div class="hero-value small">{tempText(controlRoomTemperature)}</div>
-      {#if liveSpillPercentage !== null}
-        <div class="hero-status-line">Spill: {percentText(liveSpillPercentage)}</div>
+      {#if spillActive}
+        <div class="hero-status-line">Spill Active</div>
       {/if}
     </div>
   </div>
