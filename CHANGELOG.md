@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.4 - 2026-07-07
+
+- Restore adaptive air quality configuration controls in the Svelte UI.
+- Consolidate the add-on runtime around the Svelte UI and fail startup when the UI build is missing.
+- Split service integration code into focused modules and remove legacy UI assets.
+- Improve event diagnostics with richer APK-style command meanings and fallback labels.
+
 ## 0.8.3 - 2026-07-06
 
 - Decode AirTouch mobile/server client traffic in live backend events without applying client echoes to replacement-touchscreen state.
