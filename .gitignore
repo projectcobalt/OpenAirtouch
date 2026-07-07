@@ -16,5 +16,5 @@ openairtouch/ui/node_modules/
 dist/
 build/
 
-# Local research and migration archives
-/research/
+# Local research, screenshots, planning notes, and migration archives
+/local/

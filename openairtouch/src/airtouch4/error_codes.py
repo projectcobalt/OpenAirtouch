@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# Generated from research/apk-decompile-full/jadx/sources/com/auto/aircondition/base/Util/ErrorCodeTable.java
+# Generated from AirTouch APK research; keep local copies under local/research/.
 # and Util/errortable/*.java. These are display codes; long descriptions are fetched by the APK.
 
 BRAND_TABLE_BY_ID: dict[int, str] = {

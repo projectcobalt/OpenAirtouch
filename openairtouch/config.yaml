@@ -26,10 +26,10 @@ ports:
 ports_description:
   8099/tcp: Optional direct HTTP/WebSocket API port. Ingress does not require this to be exposed.
 options:
-  transport: tcp_serial
+  transport: local_serial
   serial_port: /dev/ttyUSB0
   baudrate: 115200
-  tcp_host: 192.168.30.56
+  tcp_host: ""
   tcp_port: 6638
   reconnect_interval: 5.0
   protocol: auto
