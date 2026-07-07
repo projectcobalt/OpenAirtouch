@@ -41,6 +41,69 @@ CATEGORY_LABELS = {
     "zone_status": "Zone Status",
 }
 
+COMMAND_MEANINGS = {
+    "CMD_EXPANDED": "Carries An Expanded System Payload, Usually Touchpad Presence Or Debug Information.",
+    "SET_GROUP_STATUS": "Requests A Zone Power, Damper, Or Temperature Control Change.",
+    "RESPONSE_GROUP_STATUS": "Reports Current Zone Power, Damper, Temperature, Spill, And Sensor Flags.",
+    "SET_AC_STATUS": "Requests An AC Power, Mode, Fan, Or Setpoint Change.",
+    "RESPONSE_AC_STATUS": "Reports Current AC Power, Mode, Fan, Setpoint, Temperature, And Error State.",
+    "EXPANSION_DAMPER_STATUS": "Reports Expansion Damper State.",
+    "SET_TEMPERATURE": "Sends A Temperature Value To The Main Board.",
+    "RESPONSE_LED": "Reports Touchpad LED State.",
+    "SET_GROUP_CONTROL_MOBILE": "Client API Request To Change A Zone.",
+    "GROUP_STATUS_MOBILE": "Client API Zone Status Update.",
+    "SET_AC_CONTROL_MOBILE": "Client API Request To Change An AC.",
+    "AC_STATUS_MOBILE": "Client API AC Status Update.",
+    "CLIENT_BULK_INFO": "Client API Request Or Reply For Bulk System Information.",
+    "SET_ACTIVE_FAVOURITE": "Requests The Active Favourite To Change.",
+    "RESPONSE_ACTIVE_FAVOURITE": "Reports The Active Favourite.",
+    "SET_FAVOURITE": "Updates Favourite Configuration.",
+    "RESPONSE_FAVOURITE": "Reports Favourite Configuration.",
+    "RESPONSE_PROGRAM_DEFINE": "Reports Program Schedule Configuration.",
+    "SET_AC_TIMER": "Updates AC Timer Configuration.",
+    "RESPONSE_AC_TIMER": "Reports AC Timer Configuration.",
+    "SET_PROGRAM_DEFINE_NEW": "Updates Newer Program Schedule Configuration.",
+    "RESPONSE_PROGRAM_DEFINE_NEW": "Reports Newer Program Schedule Configuration.",
+    "SET_DATETIME": "Sets The AirTouch Clock.",
+    "DATETIME_STATUS": "Reports The AirTouch Clock.",
+    "RESPONSE_AC_RUNTIME_STATUS": "Reports AC Runtime State.",
+    "SET_TURBO_GROUP": "Updates Turbo Zone Configuration.",
+    "RESPONSE_TURBO_GROUP": "Reports Turbo Zone Configuration.",
+    "SET_GROUP_NAME": "Updates Zone Names.",
+    "RESPONSE_GROUP_NAME": "Reports Zone Names.",
+    "SET_PREFERENCE": "Updates User Or System Preferences.",
+    "RESPONSE_PREFERENCE": "Reports User Or System Preferences.",
+    "RESPONSE_MAIN_DISPLAY_NEW": "Reports Main Display State For Newer Firmware.",
+    "RESPONSE_MAIN_DISPLAY": "Reports Main Display State.",
+    "RESPONSE_SETTING_DATA": "Reports System Setting Data.",
+    "SET_PARAMETERS": "Updates System Parameters.",
+    "RESPONSE_PARAMETERS": "Reports System Parameters.",
+    "START_BALANCE": "Starts Airflow Balancing.",
+    "RESPONSE_BALANCE": "Reports Airflow Balancing State.",
+    "STOP_BALANCE": "Stops Airflow Balancing.",
+    "SET_GROUPING": "Updates Zone-To-Damper Grouping.",
+    "RESPONSE_GROUPING": "Reports Zone-To-Damper Grouping.",
+    "SET_SPILL": "Updates Spill Configuration.",
+    "RESPONSE_SPILL": "Reports Spill Configuration.",
+    "SET_SERVICE": "Updates Service Configuration.",
+    "RESPONSE_SERVICE": "Reports Service Configuration.",
+    "SET_PASSWORD_INFO": "Updates Password Or PIN Information.",
+    "RESPONSE_PASSWORD_INFO": "Reports Password Or PIN Information.",
+    "CLEAR_NOTIFICATION": "Clears A Notification.",
+    "RESPONSE_DIALOG_MESSAGE": "Reports A Touchpad Dialog Message.",
+    "SET_PAIR_SENSOR": "Pairs Or Configures An RF Sensor.",
+    "RESPONSE_SENSOR_LIST": "Reports Known RF Sensors And Touchpads.",
+    "SET_SENSOR_TEMP": "Updates A Sensor Temperature Value.",
+    "RESPONSE_SENSOR_INFO": "Reports RF Sensor Temperature, Battery, And Signal Information.",
+    "SET_AC_BASE_INFO": "Updates AC Base Configuration.",
+    "RESPONSE_AC_BASE_INFO": "Reports AC Base Configuration.",
+    "RESPONSE_AC_SETTING": "Reports AC Capability And Setting Data.",
+    "SET_AC_SETTING_NEW": "Updates Newer AC Setting Data.",
+    "RESPONSE_AC_SETTING_NEW": "Reports Newer AC Setting Data.",
+    "RESPONSE_DEBUG_INFO": "Reports Debug Information.",
+    "RESPONSE_GATEWAY_INFO": "Reports Gateway Information.",
+}
+
 
 def describe_event(record: dict[str, Any]) -> dict[str, Any]:
     """Return a stable human-readable companion for a structured event record."""
@@ -61,7 +124,7 @@ def describe_event(record: dict[str, Any]) -> dict[str, Any]:
     cmd = record.get("cmd_name") or record.get("cmd")
     direction = str(record.get("direction") or event or "event").upper()
     if cmd:
-        return _plain("bus", f"{direction} {_command_label(cmd)}")
+        return _describe_command(direction, cmd)
     return _plain("event", _display_text(record.get("message") or event or "Runtime Event"))
 
 
@@ -385,6 +448,17 @@ def _hex_or_text(value: Any) -> str:
     return f"0x{number:02X}"
 
 
+def _describe_command(direction: str, value: Any) -> dict[str, Any]:
+    key = _text(value, "")
+    label = _command_label(key)
+    meaning = COMMAND_MEANINGS.get(key)
+    if meaning is None:
+        meaning = _generic_command_meaning(key)
+    if meaning:
+        return _plain("bus", f"{direction} {label}: {meaning}")
+    return _plain("bus", f"{direction} {label}")
+
+
 def _command_label(value: Any) -> str:
     text = _text(value, "Unknown Command")
     if text == "UNKNOWN":
@@ -393,6 +467,18 @@ def _command_label(value: Any) -> str:
         text = text[4:]
     text = text.lower()
     return _display_text(text)
+
+
+def _generic_command_meaning(value: str) -> str:
+    if value == "UNKNOWN":
+        return "Command Meaning Is Not Known Yet."
+    if value.startswith("SET_"):
+        return "Sends A Control Or Configuration Change."
+    if value.startswith("RESPONSE_"):
+        return "Carries A Status Or Configuration Reply."
+    if value.endswith("_MOBILE") or value.startswith("CLIENT_"):
+        return "Carries Client API Traffic."
+    return ""
 
 
 def _title(value: Any) -> str:

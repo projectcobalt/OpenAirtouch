@@ -372,6 +372,8 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(record["cmd_name"], "CMD_EXPANDED")
         self.assertEqual(record["plain"]["category"], "bus")
         self.assertIn("Expanded", record["summary"])
+        self.assertIn("Touchpad Presence Or Debug Information", record["message"])
+        self.assertEqual(record["message"], record["summary"])
         self.assertNotIn("CMD_EXPANDED", record["summary"])
 
     def test_event_record_adds_plain_english_ac_status(self) -> None:

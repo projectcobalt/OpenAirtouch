@@ -480,6 +480,8 @@ def _event_record(event: RuntimeEvent) -> dict[str, Any]:
     plain = describe_event(record)
     record["plain"] = plain
     record["summary"] = plain["text"]
+    if not record["message"]:
+        record["message"] = plain["text"]
     return record
 
 
