@@ -170,6 +170,8 @@
           <label class="field">Cooling Comfort<input id="adaptive-cool-comfort-temp" type="number" min="16" max="32" value={adaptiveConfig.cool_comfort_temp ?? 24} /></label>
           <label class="field">Heating Margin<input id="adaptive-heat-diff" type="number" min="0" max="15" value={adaptiveConfig.heat_diff ?? 4} /></label>
           <label class="field">Heating Comfort<input id="adaptive-heat-comfort-temp" type="number" min="16" max="32" value={adaptiveConfig.heat_comfort_temp ?? 20} /></label>
+          <label class="field">Dry Humidity Threshold<input id="adaptive-dry-humidity-threshold" type="number" min="30" max="100" value={adaptiveConfig.dry_humidity_threshold ?? 70} /></label>
+          <label class="field">CO2 Ventilation Threshold<input id="adaptive-co2-ventilation-threshold" type="number" min="400" max="5000" step="50" value={adaptiveConfig.co2_ventilation_threshold_ppm ?? 1000} /></label>
         </div>
       </article>
       <article class="summary-card editor-card adaptive-config-card">

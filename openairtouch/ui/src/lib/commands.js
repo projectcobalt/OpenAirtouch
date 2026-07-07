@@ -118,6 +118,8 @@ export function adaptiveConfigPayload(card) {
     cool_comfort_temp: Number(card?.querySelector("#adaptive-cool-comfort-temp")?.value || 24),
     heat_diff: Number(card?.querySelector("#adaptive-heat-diff")?.value || 4),
     heat_comfort_temp: Number(card?.querySelector("#adaptive-heat-comfort-temp")?.value || 20),
+    dry_humidity_threshold: Number(card?.querySelector("#adaptive-dry-humidity-threshold")?.value || 70),
+    co2_ventilation_threshold_ppm: Number(card?.querySelector("#adaptive-co2-ventilation-threshold")?.value || 1000),
     check_interval: Number(card?.querySelector("#adaptive-check-interval")?.value || 60),
     command_cooldown: Number(card?.querySelector("#adaptive-command-cooldown")?.value || 300),
     mpc_horizon_hours: Number(card?.querySelector("#adaptive-mpc-horizon-hours")?.value || 6),
