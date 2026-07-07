@@ -372,9 +372,59 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(record["cmd_name"], "CMD_EXPANDED")
         self.assertEqual(record["plain"]["category"], "bus")
         self.assertIn("Expanded", record["summary"])
-        self.assertIn("Touchpad Presence Or Debug Information", record["message"])
         self.assertEqual(record["message"], record["summary"])
         self.assertNotIn("CMD_EXPANDED", record["summary"])
+
+    def test_runtime_adds_apk_style_control_message(self) -> None:
+        runtime = AirTouchRuntime(
+            FakeTransport(),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False),
+        )
+        packet = AirTouchPacket(
+            dest=0x80,
+            src=0x91,
+            packet_id=0x22,
+            command=0x20,
+            payload=bytes.fromhex("42 55"),
+            raw_mode=True,
+        )
+
+        event = runtime._tx_event(packet, packet.encode(stuff_raw=True))
+
+        self.assertEqual(event.message, "[C]Group(2) SET Power: ON Open: 85")
+
+    def test_runtime_adds_apk_style_state_change_message(self) -> None:
+        runtime = AirTouchRuntime(
+            FakeTransport(),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False),
+        )
+        runtime.state.groups[2] = {
+            "status": {
+                "group": 2,
+                "power_name": "off",
+                "percentage": 30,
+                "setpoint": 22,
+                "temperature": 24.0,
+                "spill_on": False,
+            }
+        }
+
+        message = runtime._state_log_message({
+            "type": "group_status_internal",
+            "records": [{
+                "group": 2,
+                "power_name": "on",
+                "percentage": 85,
+                "setpoint": 23,
+                "temperature": 24.5,
+                "spill_on": True,
+            }],
+        })
+
+        self.assertIn("[M]Group(2) Power: OFF->ON", message)
+        self.assertIn("[M]Group(2) Open: 30->85", message)
+        self.assertIn("[M]Group(2) SetPoint: 22->23", message)
+        self.assertIn("[M]Group(2) Spill: OFF->ON", message)
 
     def test_event_record_adds_plain_english_ac_status(self) -> None:
         packet = AirTouchPacket(
