@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from airtouch4.state import AirTouchState
+from openairtouch.state import AirTouchState
 
 
 class AirTouchStateTests(unittest.TestCase):

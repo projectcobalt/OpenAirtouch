@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from airtouch4.service.adaptive_airtouch import translate_airtouch_snapshot
+from openairtouch.service.adaptive_airtouch import translate_airtouch_snapshot
 
 
 class AdaptiveAirTouchTranslatorTests(unittest.TestCase):

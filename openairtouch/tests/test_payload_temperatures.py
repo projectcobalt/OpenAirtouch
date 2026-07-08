@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from airtouch4.payloads.common import (
+from openairtouch.payloads.common import (
     decode_touchpad_heartbeat_payload,
     encode_internal_temperature,
     encode_touchpad_heartbeat_payload,
     parse_internal_temperature,
 )
-from airtouch4.payloads.internal_status import decode_touchpad_temperature
-from airtouch4.payloads.ui_config import decode_main_display_new
+from openairtouch.payloads.internal_status import decode_touchpad_temperature
+from openairtouch.payloads.ui_config import decode_main_display_new
 
 
 class InternalTemperatureTests(unittest.TestCase):

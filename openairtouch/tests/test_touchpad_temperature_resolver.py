@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from airtouch4.service.touchpad_temperature import resolve_touchpad_temperature
+from openairtouch.service.touchpad_temperature import resolve_touchpad_temperature
 
 
 class TouchpadTemperatureResolverTests(unittest.TestCase):

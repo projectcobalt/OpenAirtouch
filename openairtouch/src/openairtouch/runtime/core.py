@@ -32,13 +32,8 @@ class RuntimeConfig:
     active: bool = True
     detect_seconds: float = 3.0
     heartbeat_interval: float = 30.0
-    heartbeat_payload: bytes | None = None
     touchpad_temperature: float = 23.0
-    source_address: int | None = None
-    auto_address: bool = True
-    force_source_address: bool = False
     init_transactions: bool = True
-    protocol: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -87,14 +82,11 @@ class AirTouchRuntime:
 
     def __post_init__(self) -> None:
         if self.profile is None:
-            self.profile = get_profile(self.config.protocol)
+            self.profile = get_profile("auto")
         if self.session is None:
             self.session = TouchscreenSession(
-                src=self.config.source_address or ADDR_TOUCHPAD_1,
-                heartbeat_payload=self.config.heartbeat_payload,
                 touchpad_temperature=self.config.touchpad_temperature,
                 heartbeat_interval=self.config.heartbeat_interval,
-                auto_address=False,
             )
         if self.transactions is None and self.config.active and self.config.init_transactions:
             self.transactions = TransactionQueue()
@@ -183,7 +175,7 @@ class AirTouchRuntime:
             "runtime": {
                 "active": self.config.active,
                 "connected": connected,
-                "protocol_mode": self.config.protocol,
+                "protocol_mode": "auto",
                 "protocol": self._profile.name,
                 "protocol_name": self._profile.display_name,
                 "detected_protocol": self.detected_protocol,
@@ -196,7 +188,6 @@ class AirTouchRuntime:
                 "touchpad_temperature_source": self._session.touchpad_temperature_source,
                 "touchpad_temperature_detail": self._session.touchpad_temperature_detail,
                 "heartbeat_payload": self._session.current_heartbeat_payload().hex(" ").upper(),
-                "heartbeat_payload_override": self._session.heartbeat_payload is not None,
                 "rx_count": self.rx_count,
                 "tx_count": self.tx_count,
                 "uptime_seconds": int(time.monotonic() - self.started_monotonic),
@@ -262,17 +253,7 @@ class AirTouchRuntime:
         return "; ".join(messages)
 
     def _assign_address(self) -> int | None:
-        if self.config.force_source_address and self.config.source_address is not None:
-            return self._session.choose_available_address(
-                self.config.source_address,
-                allow_occupied=True,
-            )
-        if not self.config.auto_address and self.config.source_address is not None:
-            return self._session.choose_available_address(
-                self.config.source_address,
-                allow_occupied=False,
-            )
-        return self._session.choose_available_address(self.config.source_address)
+        return self._session.choose_available_address()
 
     @property
     def _profile(self) -> ProtocolProfile:
@@ -280,11 +261,10 @@ class AirTouchRuntime:
 
     def _handle_detected_protocol(self, detected: str) -> None:
         self.detected_protocol = detected
-        configured = self.config.protocol.lower()
-        if detected == self._profile.name and configured in {"auto", detected}:
+        if detected == self._profile.name:
             self.protocol_mismatch = False
             return
-        if detected != self._profile.name or configured not in {"auto", detected}:
+        if detected != self._profile.name:
             self.protocol_mismatch = True
             self.boot_complete = False
             if self.transactions is not None:

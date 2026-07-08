@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from airtouch4.service.adaptive import AdaptiveConfig, AdaptiveController
-from airtouch4.service.adaptive_model import AdaptiveDevice, AdaptiveRoom, AdaptiveSnapshot
-from airtouch4.service.adaptive_mpc import AdaptiveMpcEngine, MpcInputs, ZoneThermalModel
+from openairtouch.service.adaptive import AdaptiveConfig, AdaptiveController
+from openairtouch.service.adaptive_model import AdaptiveDevice, AdaptiveRoom, AdaptiveSnapshot
+from openairtouch.service.adaptive_mpc import AdaptiveMpcEngine, MpcInputs, ZoneThermalModel
 
 
 def ready_model() -> ZoneThermalModel:

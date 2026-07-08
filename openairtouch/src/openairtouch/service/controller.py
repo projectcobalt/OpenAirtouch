@@ -46,7 +46,6 @@ class RuntimeControllerConfig:
     loop_sleep: float = 0.02
     reconnect_interval: float = 5.0
     event_history: int = 200
-    ui_theme: str = "system"
     weather: HomeAssistantApiConfig = HomeAssistantApiConfig()
     weather_poll_interval: float = 60.0
     error_resolver: RemoteErrorResolverConfig = RemoteErrorResolverConfig()
@@ -90,8 +89,8 @@ class RuntimeController:
         self._next_adaptive_learning_save = 0.0
         self._touchpad_temperature = TouchpadTemperatureResult(
             temperature=self._runtime_config.touchpad_temperature,
-            source="raw_payload" if self._runtime_config.heartbeat_payload is not None else "configured",
-            detail={"override": True} if self._runtime_config.heartbeat_payload is not None else {},
+            source="configured",
+            detail={},
         )
         self._next_datetime_sync = 0.0
         self._last_datetime_sync: dict[str, Any] | None = None
@@ -184,9 +183,8 @@ class RuntimeController:
             "tcp_host": self.config.tcp_host,
             "tcp_port": self.config.tcp_port,
             "reconnect_interval": self.config.reconnect_interval,
-            "protocol": self._runtime_config.protocol,
+            "protocol": "auto",
             "bus_log": str(self.config.bus_log) if self.config.bus_log is not None else None,
-            "ui_theme": self.config.ui_theme,
             "fallback_touchpad_temperature": self._runtime_config.touchpad_temperature,
             "weather_entity": self.config.weather.weather_entity,
             "forecast_weather_entity": self.config.weather.forecast_weather_entity,
@@ -338,8 +336,6 @@ class RuntimeController:
                 self._mark_changed_locked()
 
     def _update_touchpad_temperature(self, runtime: AirTouchRuntime) -> None:
-        if self._runtime_config.heartbeat_payload is not None:
-            return
         runtime_snapshot = runtime.snapshot()
         integrations = self._integrations.indoor_input()
         result = resolve_touchpad_temperature(

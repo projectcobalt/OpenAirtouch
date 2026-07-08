@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import Subnav from "../components/Subnav.svelte";
-  import { fanName, modeName } from "../lib/airtouch.js";
+  import { fanName, modeName } from "../lib/openairtouch.js";
   import { tempText } from "../lib/format.js";
 
   export let options = [];

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from airtouch4.service.commands import build_transaction
+from openairtouch.service.commands import build_transaction
 
 
 class ServiceCommandTests(unittest.TestCase):

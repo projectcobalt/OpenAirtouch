@@ -12,13 +12,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from airtouch4.runtime import RuntimeConfig
-from airtouch4.service.adaptive import AdaptiveConfig
-from airtouch4.service.api import create_app
-from airtouch4.service.controller import RuntimeController, RuntimeControllerConfig
-from airtouch4.service.error_resolver import RemoteErrorResolverConfig
-from airtouch4.service.ha_client import HomeAssistantApiConfig
-from airtouch4.session.touchscreen import parse_hex_payload
+from openairtouch.runtime import RuntimeConfig
+from openairtouch.service.adaptive import AdaptiveConfig
+from openairtouch.service.api import create_app
+from openairtouch.service.controller import RuntimeController, RuntimeControllerConfig
+from openairtouch.service.error_resolver import RemoteErrorResolverConfig
+from openairtouch.service.ha_client import HomeAssistantApiConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,17 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tcp-host", default="127.0.0.1", help="TCP serial bridge host when --transport tcp_serial is used.")
     parser.add_argument("--tcp-port", type=int, default=6638, help="TCP serial bridge port when --transport tcp_serial is used.")
     parser.add_argument("--reconnect-interval", type=float, default=5.0, help="Seconds to wait before reconnecting after transport errors.")
-    parser.add_argument("--protocol", default="auto", choices=("auto", "at4", "at5"), help="AirTouch protocol profile. AT4 is implemented; AT5 is detected but not yet live-control capable.")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind host. Default: 0.0.0.0.")
     parser.add_argument("--http-port", type=int, default=8099, help="HTTP bind port. Default matches HA ingress convention.")
     parser.add_argument("--bus-log", type=Path, help="Optional raw RX/TX/init JSONL log.")
     parser.add_argument("--detect-seconds", type=float, default=3.0)
     parser.add_argument("--heartbeat-interval", type=float, default=30.0)
-    parser.add_argument("--touchpad-temperature", type=float, default=23.0)
-    parser.add_argument("--heartbeat-payload", default="")
-    parser.add_argument("--source-address", default="auto", help="Preferred touchpad source address: auto, 0x90, or 0x91.")
-    parser.add_argument("--force-source-address", action="store_true")
-    parser.add_argument("--ui-theme", default="system", choices=("system", "light", "dark"))
     parser.add_argument("--weather-entity", default="")
     parser.add_argument("--forecast-weather-entity", default="")
     parser.add_argument("--indoor-temperature-entity", default="")
@@ -77,12 +70,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_source_address(text: str) -> int | None:
-    if text.lower() == "auto":
-        return None
-    return int(text, 0)
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.transport == "local_serial" and not args.port:
@@ -94,23 +81,11 @@ def main(argv: list[str] | None = None) -> int:
         print("uvicorn is required for the service. Install dependencies from requirements.txt", file=sys.stderr)
         return 2
 
-    heartbeat_payload = (
-        parse_hex_payload(args.heartbeat_payload)
-        if args.heartbeat_payload.strip()
-        else None
-    )
-
     runtime_config = RuntimeConfig(
         active=True,
         detect_seconds=args.detect_seconds,
         heartbeat_interval=args.heartbeat_interval,
-        heartbeat_payload=heartbeat_payload,
-        touchpad_temperature=args.touchpad_temperature,
-        source_address=parse_source_address(args.source_address),
-        auto_address=True,
-        force_source_address=args.force_source_address,
         init_transactions=True,
-        protocol=args.protocol,
     )
     controller = RuntimeController(
         RuntimeControllerConfig(
@@ -122,7 +97,6 @@ def main(argv: list[str] | None = None) -> int:
             reconnect_interval=args.reconnect_interval,
             runtime=runtime_config,
             bus_log=args.bus_log,
-            ui_theme=args.ui_theme,
             weather=HomeAssistantApiConfig(
                 weather_entity=args.weather_entity,
                 forecast_weather_entity=args.forecast_weather_entity,

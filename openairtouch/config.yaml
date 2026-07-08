@@ -32,15 +32,8 @@ options:
   tcp_host: ""
   tcp_port: 6638
   reconnect_interval: 5.0
-  protocol: auto
-  source_address: auto
-  force_source_address: false
   detect_seconds: 3.0
   heartbeat_interval: 30.0
-  touchpad_temperature_sensor: ""
-  touchpad_temperature: 23.0
-  heartbeat_payload: ""
-  ui_theme: system
   bus_log: false
   weather_entity: ""
   forecast_weather_entity: ""
@@ -67,15 +60,8 @@ schema:
   tcp_host: str
   tcp_port: int
   reconnect_interval: float
-  protocol: list(auto|at4|at5)
-  source_address: list(auto|0x90|0x91)
-  force_source_address: bool
   detect_seconds: float
   heartbeat_interval: float
-  touchpad_temperature_sensor: str
-  touchpad_temperature: float
-  heartbeat_payload: str
-  ui_theme: list(system|light|dark)
   bus_log: bool
   weather_entity: str
   forecast_weather_entity: str

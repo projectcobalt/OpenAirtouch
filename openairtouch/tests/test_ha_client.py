@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
-from airtouch4.service.ha_client import HomeAssistantApiClient, HomeAssistantApiConfig, _now_forecast_entry
+from openairtouch.service.ha_client import HomeAssistantApiClient, HomeAssistantApiConfig, _now_forecast_entry
 
 
 class FakeResponse:
@@ -39,7 +39,7 @@ class HomeAssistantApiClientTests(unittest.TestCase):
         self.assertEqual(entry["humidity"], 60.0)
 
     @patch.dict(os.environ, {"SUPERVISOR_TOKEN": "test-token"})
-    @patch("airtouch4.service.ha_client.urlopen")
+    @patch("openairtouch.service.ha_client.urlopen")
     def test_home_assistant_timezone_is_cached(self, urlopen_mock) -> None:
         urlopen_mock.return_value = FakeResponse({"time_zone": "Australia/Brisbane"})
         client = HomeAssistantApiClient(HomeAssistantApiConfig())
@@ -50,7 +50,7 @@ class HomeAssistantApiClientTests(unittest.TestCase):
         self.assertEqual(urlopen_mock.call_count, 1)
 
     @patch.dict(os.environ, {"SUPERVISOR_TOKEN": "test-token"})
-    @patch("airtouch4.service.ha_client.urlopen")
+    @patch("openairtouch.service.ha_client.urlopen")
     def test_ac_telemetry_snapshot_normalizes_optional_entities(self, urlopen_mock) -> None:
         urlopen_mock.side_effect = [
             FakeResponse({"state": "1.2", "attributes": {"unit_of_measurement": "kW", "friendly_name": "AC Power"}}),
@@ -83,7 +83,7 @@ class HomeAssistantApiClientTests(unittest.TestCase):
         self.assertIn("supply_air_temperature", snapshot["evidence"])
 
     @patch.dict(os.environ, {"SUPERVISOR_TOKEN": "test-token"})
-    @patch("airtouch4.service.ha_client.urlopen")
+    @patch("openairtouch.service.ha_client.urlopen")
     def test_indoor_snapshot_includes_optional_co2_entity(self, urlopen_mock) -> None:
         urlopen_mock.side_effect = [
             FakeResponse({"state": "22.4", "attributes": {"unit_of_measurement": "Â°C", "friendly_name": "Indoor Temp"}}),

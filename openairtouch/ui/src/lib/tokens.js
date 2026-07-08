@@ -1,4 +1,4 @@
-import { MODE_THEMES } from "./airtouch.js";
+import { MODE_THEMES } from "./openairtouch.js";
 import { assetPath } from "./client.js";
 
 export const APP_TOKENS = {

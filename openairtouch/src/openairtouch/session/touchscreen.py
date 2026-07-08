@@ -43,14 +43,12 @@ class TouchscreenSession:
     src: int = ADDR_TOUCHPAD_1
     dest: int = ADDR_MAIN_BOARD
     raw_mode: bool = True
-    heartbeat_payload: bytes | None = None
     touchpad_temperature: float = 23.0
     touchpad_temperature_source: str = "configured"
     touchpad_temperature_detail: dict[str, Any] = field(default_factory=dict)
     heartbeat_interval: float = 30.0
     sync_commands: tuple[int, ...] = DEFAULT_SYNC_COMMANDS
     next_packet_id: int = 0
-    auto_address: bool = False
     seen_touchpad_addresses: set[int] = field(default_factory=set)
     seen_touchpads: dict[int, dict[str, Any]] = field(default_factory=dict)
     _rx_buffer: bytearray = field(default_factory=bytearray)
@@ -73,15 +71,12 @@ class TouchscreenSession:
         return self.build_packet(0x26, self.current_heartbeat_payload())
 
     def current_heartbeat_payload(self) -> bytes:
-        if self.heartbeat_payload is not None:
-            return self.heartbeat_payload
         return encode_touchpad_heartbeat_payload(self.touchpad_temperature)
 
     def set_touchpad_temperature(self, temperature: float, *, source: str = "runtime", detail: dict[str, Any] | None = None) -> None:
         self.touchpad_temperature = float(temperature)
         self.touchpad_temperature_source = source
         self.touchpad_temperature_detail = dict(detail or {})
-        self.heartbeat_payload = None
 
     def build_touchpad_info_request(self) -> tuple[AirTouchPacket, bytes]:
         return self.build_packet_to(ADDR_TOUCHPAD_EXPANDED, 0x1F, bytes.fromhex("FF 01"))
@@ -126,20 +121,8 @@ class TouchscreenSession:
             return
         self.seen_touchpad_addresses.add(address)
         self.seen_touchpads[address] = decoded
-        if self.auto_address:
-            self.choose_available_address()
-
-    def choose_available_address(self, preferred_source: int | None = None, *, allow_occupied: bool = False) -> int | None:
-        preferred_slot = None if preferred_source is None else TOUCHPAD_ADDRESS_TO_SLOT.get(preferred_source)
+    def choose_available_address(self) -> int | None:
         occupied = set(self.seen_touchpad_addresses)
-
-        if allow_occupied and preferred_source is not None:
-            self.src = preferred_source
-            return self.src
-
-        if preferred_slot in (1, 2) and preferred_slot not in occupied:
-            self.src = TOUCHPAD_SLOT_TO_ADDRESS[preferred_slot]
-            return self.src
 
         for slot in (1, 2):
             if slot not in occupied:
@@ -151,19 +134,8 @@ class TouchscreenSession:
     def source_slot(self) -> int | None:
         return TOUCHPAD_ADDRESS_TO_SLOT.get(self.src)
 
-    def source_address_conflicts(self) -> bool:
-        slot = self.source_slot()
-        return slot is not None and slot in self.seen_touchpad_addresses
-
     def occupied_touchpad_addresses(self) -> list[int]:
         return [TOUCHPAD_SLOT_TO_ADDRESS[slot] for slot in sorted(self.seen_touchpad_addresses) if slot in TOUCHPAD_SLOT_TO_ADDRESS]
-
-
-def parse_hex_payload(text: str) -> bytes:
-    compact = text.replace(" ", "").replace(":", "").replace("-", "")
-    if len(compact) % 2:
-        raise ValueError(f"hex payload must contain whole bytes: {text!r}")
-    return bytes.fromhex(compact)
 
 
 def parse_command_list(text: str) -> tuple[int, ...]:

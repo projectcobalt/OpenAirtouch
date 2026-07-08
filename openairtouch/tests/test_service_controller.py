@@ -10,14 +10,14 @@ import time
 import unittest
 from typing import Iterable
 
-from airtouch4.packet import AirTouchPacket
-from airtouch4.runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent
-from airtouch4.service.adaptive import AdaptiveConfig
-from airtouch4.service.adaptive_mpc import ZoneThermalModel
-from airtouch4.service.controller import RuntimeController, RuntimeControllerConfig, _datetime_payload, _event_record
-from airtouch4.service.ha_client import HomeAssistantApiConfig
-from airtouch4.session.queue import TransactionSpec
-from airtouch4.transport import TcpSerialTransport
+from openairtouch.packet import AirTouchPacket
+from openairtouch.runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent
+from openairtouch.service.adaptive import AdaptiveConfig
+from openairtouch.service.adaptive_mpc import ZoneThermalModel
+from openairtouch.service.controller import RuntimeController, RuntimeControllerConfig, _datetime_payload, _event_record
+from openairtouch.service.ha_client import HomeAssistantApiConfig
+from openairtouch.session.queue import TransactionSpec
+from openairtouch.transport import TcpSerialTransport
 
 
 class FakeTransport:
@@ -166,14 +166,16 @@ class RuntimeControllerTests(unittest.TestCase):
     def test_datetime_sync_is_queued_only_from_main_touchpad(self) -> None:
         main_runtime = AirTouchRuntime(
             FakeTransport(),
-            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False, source_address=0x90),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False),
         )
         main_runtime.boot_complete = True
         main_runtime.address_assigned = True
         standby_runtime = AirTouchRuntime(
             FakeTransport(),
-            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False, source_address=0x91),
+            RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False),
         )
+        assert standby_runtime.session is not None
+        standby_runtime.session.src = 0x91
         standby_runtime.boot_complete = True
         standby_runtime.address_assigned = True
         main = RuntimeController(RuntimeControllerConfig(port="TEST"))

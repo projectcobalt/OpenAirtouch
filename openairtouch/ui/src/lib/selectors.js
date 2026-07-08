@@ -1,4 +1,4 @@
-import { MODE_OPTIONS, modeKey } from "./airtouch.js";
+import { MODE_OPTIONS, modeKey } from "./openairtouch.js";
 import { finite, percentText, tempText, title } from "./format.js";
 
 export function configuredModes(settings) {

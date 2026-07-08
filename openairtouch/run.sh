@@ -28,16 +28,9 @@ BAUDRATE="$(config baudrate 115200)"
 TCP_HOST="$(config tcp_host 127.0.0.1)"
 TCP_PORT="$(config tcp_port 6638)"
 RECONNECT_INTERVAL="$(config reconnect_interval 5.0)"
-PROTOCOL="$(config protocol auto)"
-SOURCE_ADDRESS="$(config source_address auto)"
-FORCE_SOURCE_ADDRESS="$(config force_source_address false)"
 DETECT_SECONDS="$(config detect_seconds 3.0)"
 HEARTBEAT_INTERVAL="$(config heartbeat_interval 30.0)"
-TOUCHPAD_TEMPERATURE_SENSOR="$(config touchpad_temperature_sensor "")"
-TOUCHPAD_TEMPERATURE="$(config touchpad_temperature 23.0)"
-HEARTBEAT_PAYLOAD="$(config heartbeat_payload "")"
 BUS_LOG="$(config bus_log true)"
-UI_THEME="$(config ui_theme system)"
 WEATHER_ENTITY="$(config weather_entity "")"
 FORECAST_WEATHER_ENTITY="$(config forecast_weather_entity "")"
 INDOOR_TEMPERATURE_ENTITY="$(config indoor_temperature_entity "")"
@@ -56,10 +49,6 @@ REMOTE_ERROR_CACHE_DAYS="$(config remote_error_cache_days 2.0)"
 REMOTE_ERROR_DEVICE_ID="$(config remote_error_device_id "")"
 REMOTE_ERROR_SERIAL="$(config remote_error_serial "")"
 LOG_LEVEL="$(config log_level info)"
-
-if [[ -z "${INDOOR_TEMPERATURE_ENTITY}" && -n "${TOUCHPAD_TEMPERATURE_SENSOR}" ]]; then
-    INDOOR_TEMPERATURE_ENTITY="${TOUCHPAD_TEMPERATURE_SENSOR}"
-fi
 
 case "${TRANSPORT}" in
     local_serial|tcp_serial)
@@ -80,26 +69,7 @@ if [[ "${TRANSPORT}" == "tcp_serial" && ( -z "${TCP_HOST}" || -z "${TCP_PORT}" )
     exit 2
 fi
 
-case "${PROTOCOL}" in
-    auto|at4|at5)
-        ;;
-    *)
-        echo "Invalid protocol: ${PROTOCOL}" >&2
-        exit 2
-        ;;
-esac
-
-export PYTHONPATH=/opt/airtouch4/src
-
-RESOLVED_HEARTBEAT_PAYLOAD="${HEARTBEAT_PAYLOAD}"
-if [[ -n "${HEARTBEAT_PAYLOAD}" ]]; then
-    RESOLVED_HEARTBEAT_PAYLOAD="$(
-        /opt/airtouch4/venv/bin/python /opt/airtouch4/scripts/resolve_touchpad_temperature.py \
-            --sensor "${TOUCHPAD_TEMPERATURE_SENSOR}" \
-            --fallback "${TOUCHPAD_TEMPERATURE}" \
-            --raw-payload "${HEARTBEAT_PAYLOAD}"
-    )"
-fi
+export PYTHONPATH=/opt/openairtouch/src
 
 ARGS=(
     "--transport" "${TRANSPORT}"
@@ -108,15 +78,10 @@ ARGS=(
     "--tcp-host" "${TCP_HOST}"
     "--tcp-port" "${TCP_PORT}"
     "--reconnect-interval" "${RECONNECT_INTERVAL}"
-    "--protocol" "${PROTOCOL}"
     "--host" "0.0.0.0"
     "--http-port" "8099"
-    "--source-address" "${SOURCE_ADDRESS}"
     "--detect-seconds" "${DETECT_SECONDS}"
     "--heartbeat-interval" "${HEARTBEAT_INTERVAL}"
-    "--touchpad-temperature" "${TOUCHPAD_TEMPERATURE}"
-    "--heartbeat-payload" "${RESOLVED_HEARTBEAT_PAYLOAD}"
-    "--ui-theme" "${UI_THEME}"
     "--weather-entity" "${WEATHER_ENTITY}"
     "--forecast-weather-entity" "${FORECAST_WEATHER_ENTITY}"
     "--indoor-temperature-entity" "${INDOOR_TEMPERATURE_ENTITY}"
@@ -140,10 +105,6 @@ ARGS=(
     "--log-level" "${LOG_LEVEL}"
 )
 
-if [[ "${FORCE_SOURCE_ADDRESS}" == "true" ]]; then
-    ARGS+=("--force-source-address")
-fi
-
 if [[ "${BUS_LOG}" == "true" ]]; then
     mkdir -p /data/logs
     ARGS+=("--bus-log" "/data/logs/airtouch-bus.jsonl")
@@ -153,5 +114,5 @@ if [[ "${REMOTE_ERROR_RESOLUTION}" == "true" ]]; then
     ARGS+=("--remote-error-resolution")
 fi
 
-echo "Starting OpenAirTouch with ${TRANSPORT} (${PROTOCOL})"
-exec /opt/airtouch4/venv/bin/python /opt/airtouch4/scripts/airtouch_service.py "${ARGS[@]}"
+echo "Starting OpenAirTouch with ${TRANSPORT}"
+exec /opt/openairtouch/venv/bin/python /opt/openairtouch/scripts/airtouch_service.py "${ARGS[@]}"

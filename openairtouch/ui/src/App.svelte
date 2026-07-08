@@ -9,7 +9,7 @@
   import AdaptiveView from "./views/AdaptiveView.svelte";
   import FavouritesView from "./views/FavouritesView.svelte";
   import SettingsView from "./views/SettingsView.svelte";
-  import { MODE_OPTIONS, fanName, modeKey, modeName } from "./lib/airtouch.js";
+  import { MODE_OPTIONS, fanName, modeKey, modeName } from "./lib/openairtouch.js";
   import {
     acBasePayload,
     acSettingsPayload,
@@ -82,6 +82,10 @@
   let pollTimer = null;
   let themeMediaQuery = null;
   let themeMediaHandler = null;
+  const STORAGE_KEYS = {
+    theme: "openairtouch.uiTheme",
+    diagnostics: "openairtouch.showSupportDiagnostics"
+  };
 
   const PROGRAM_VIEWS = [["favourites", "Favourites"], ["programs", "Programs"], ["timers", "AC Timer"]];
   const ADAPTIVE_VIEWS = [["status", "Status"], ["config", "Config"], ["analytics", "Analytics"]];
@@ -827,7 +831,7 @@
 
   function setTheme(theme) {
     selectedTheme = ["system", "light", "dark"].includes(theme) ? theme : "system";
-    localStorage.setItem("airtouch4.uiTheme", selectedTheme);
+    localStorage.setItem(STORAGE_KEYS.theme, selectedTheme);
     applyThemePreference(selectedTheme);
   }
 
@@ -842,7 +846,7 @@
 
   function setShowSupportDiagnostics(value) {
     showSupportDiagnostics = !!value;
-    localStorage.setItem("airtouch4.showSupportDiagnostics", showSupportDiagnostics ? "true" : "false");
+    localStorage.setItem(STORAGE_KEYS.diagnostics, showSupportDiagnostics ? "true" : "false");
     if (!showSupportDiagnostics && activeServiceView === "diagnostics") activeServiceView = "app";
   }
 
@@ -906,8 +910,8 @@
   }
 
   onMount(() => {
-    selectedTheme = localStorage.getItem("airtouch4.uiTheme") || controller.config?.ui_theme || "system";
-    showSupportDiagnostics = localStorage.getItem("airtouch4.showSupportDiagnostics") === "true";
+    selectedTheme = localStorage.getItem(STORAGE_KEYS.theme) || "system";
+    showSupportDiagnostics = localStorage.getItem(STORAGE_KEYS.diagnostics) === "true";
     applyThemePreference(selectedTheme);
     load();
     connectSocket();

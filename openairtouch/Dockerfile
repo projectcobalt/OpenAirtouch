@@ -12,12 +12,12 @@ RUN \
     apk add --no-cache \
         python3 \
         py3-pip \
-    && python3 -m venv /opt/airtouch4/venv
+    && python3 -m venv /opt/openairtouch/venv
 
-WORKDIR /opt/airtouch4
+WORKDIR /opt/openairtouch
 
 COPY requirements.txt ./
-RUN /opt/airtouch4/venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN /opt/openairtouch/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
 COPY scripts ./scripts
@@ -25,6 +25,6 @@ COPY run.sh /run.sh
 
 RUN chmod a+x /run.sh
 
-ENV PYTHONPATH=/opt/airtouch4/src
+ENV PYTHONPATH=/opt/openairtouch/src
 
 CMD ["/run.sh"]

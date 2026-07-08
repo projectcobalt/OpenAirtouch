@@ -5,7 +5,7 @@ export default defineConfig({
   base: "./",
   plugins: [svelte()],
   build: {
-    outDir: "../src/airtouch4/service/web",
+    outDir: "../src/openairtouch/service/web",
     emptyOutDir: true,
     assetsDir: "ui-assets"
   },

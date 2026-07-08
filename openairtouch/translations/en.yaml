@@ -1,81 +1,81 @@
 configuration:
   transport:
     name: Transport
-    description: Choose whether the AirTouch RS485 bus is connected directly to Home Assistant or exposed through a TCP serial bridge.
+    description: Choose whether the AirTouch RS485 bus uses a local serial device or a TCP serial bridge.
   serial_port:
     name: Serial Port
-    description: Local USB-RS485 device path, used only when Transport is local_serial.
+    description: Local USB-RS485 device path, used only when Transport is Local Serial.
   baudrate:
-    name: Baudrate
+    name: Baud Rate
     description: Serial baud rate for the AirTouch bus.
   tcp_host:
     name: TCP Serial Host
-    description: Hostname or IP address of the serial-over-TCP bridge, used only when Transport is tcp_serial.
+    description: Hostname or IP address of the serial-over-TCP bridge, used only when Transport is TCP Serial.
   tcp_port:
     name: TCP Serial Port
     description: TCP port of the serial-over-TCP bridge.
   reconnect_interval:
     name: Reconnect Interval
     description: Seconds to wait before retrying after a serial or TCP transport failure.
-  source_address:
-    name: Touchpad Address
-    description: Preferred touchpad address. Auto is recommended so the host avoids any existing touchpad.
-  force_source_address:
-    name: Force Address
-    description: Lab override that allows using an occupied touchpad address.
   detect_seconds:
-    name: Detection Window
+    name: Bus Detection Window
     description: Seconds to listen for existing touchpads before starting the fresh boot initialisation.
   heartbeat_interval:
     name: Heartbeat Interval
     description: Seconds between touchpad heartbeat messages.
-  touchpad_temperature_sensor:
-    name: Temperature Sensor
-    description: Optional Home Assistant sensor entity ID used for the emulated touchpad temperature at startup.
-  touchpad_temperature:
-    name: Touchpad Temperature
-    description: Fallback temperature reported by the emulated touchpad heartbeat when no sensor is configured or readable.
-  heartbeat_payload:
-    name: Heartbeat Payload
-    description: Optional raw hex override for the touchpad heartbeat; leave blank to use Touchpad temperature.
-  ui_theme:
-    name: UI Theme
-    description: Ingress UI theme preference. System follows Home Assistant/browser preference.
   bus_log:
     name: Bus Log
     description: Write RX, TX, status, and transaction events to persistent add-on storage.
   weather_entity:
     name: Weather Entity
-    description: Optional Home Assistant weather entity to display in the app header, for example weather.home.
+    description: Optional Home Assistant weather entity used for outdoor conditions and app weather display.
   forecast_weather_entity:
     name: Forecast Weather Entity
-    description: Optional Home Assistant weather entity used for hourly adaptive forecast data. Leave blank to disable forecast-aware control.
+    description: Optional Home Assistant weather entity used for hourly forecast data. Leave blank to disable forecast-aware adaptive control.
   indoor_temperature_entity:
     name: Indoor Temperature Entity
-    description: Optional Home Assistant temperature sensor entity to display under the outside weather chip.
+    description: Optional Home Assistant temperature sensor entity used as the indoor temperature input.
   indoor_humidity_entity:
     name: Indoor Humidity Entity
-    description: Optional Home Assistant humidity sensor entity to display under the outside weather chip.
+    description: Optional Home Assistant humidity sensor entity used as the indoor humidity input.
+  indoor_co2_entity:
+    name: Indoor CO2 Entity
+    description: Optional Home Assistant CO2 sensor entity used by adaptive fresh-air recommendations.
   solar_irradiance_entity:
     name: Solar Irradiance Entity
-    description: Optional Home Assistant sensor entity for solar irradiance, used by adaptive learning and MPC when available.
+    description: Optional Home Assistant sensor entity for solar irradiance, used by adaptive learning and solar-aware control.
   cloud_cover_entity:
     name: Cloud Cover Entity
     description: Optional Home Assistant sensor entity for cloud cover percentage, used as a conservative solar fallback.
+  ac_power_entity:
+    name: AC Power Entity
+    description: Optional Home Assistant power sensor for the air conditioner, used by adaptive learning and runtime status. Expected unit: W.
+  ac_running_entity:
+    name: AC Running Entity
+    description: Optional Home Assistant binary sensor that indicates whether the air conditioner is currently running. Expected states: on/off.
+  ac_frequency_entity:
+    name: AC Frequency Entity
+    description: Optional Home Assistant compressor frequency sensor, used by adaptive learning when available. Expected unit: Hz.
+  ac_return_air_temp_entity:
+    name: AC Return Air Temperature Entity
+    description: Optional Home Assistant return-air temperature sensor, used by adaptive learning and diagnostics. Expected unit: C.
+  ac_supply_air_temp_entity:
+    name: AC Supply Air Temperature Entity
+    description: Optional Home Assistant supply-air temperature sensor, used by adaptive learning and diagnostics. Expected unit: C.
   weather_poll_interval:
     name: Weather Poll Interval
-    description: Seconds between local Home Assistant weather and indoor sensor reads.
+    description: Seconds between Home Assistant reads for weather, indoor, solar, and AC telemetry inputs.
   remote_error_resolution:
-    name: Remote Error Lookup
+    name: Remote Error Resolution
     description: Resolve AC fault descriptions through the AirTouch update endpoint after local APK tables are checked.
   remote_error_cache_days:
-    name: Error Cache Days
+    name: Remote Error Cache Days
     description: Days to keep successful remote fault descriptions in persistent add-on storage.
   remote_error_device_id:
-    name: Error Lookup Device ID
+    name: Remote Error Device ID
     description: Optional device ID sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
   remote_error_serial:
-    name: Error Lookup Serial
+    name: Remote Error Serial
     description: Optional serial number sent to the AirTouch error lookup endpoint. Leave blank unless testing requires it.
   log_level:
     name: Log Level
