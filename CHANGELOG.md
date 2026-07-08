@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6 - 2026-07-09
+
+- Rename internal package and frontend helper paths from airtouch4 to openairtouch while keeping user-facing AirTouch protocol wording where it describes the actual bus.
+- Remove add-on startup options for protocol selection, touchpad address overrides, touchpad temperature seed, heartbeat payload override, and UI theme.
+- Keep runtime-owned touchpad temperature fallback and UI theme settings in the app, and always generate heartbeat payloads from the resolved runtime touchpad temperature.
+- Refresh add-on field labels and descriptions, including entity-type and unit hints for AC telemetry sensors.
+
 ## 0.8.5 - 2026-07-07
 
 - Clean the public release tree by moving local planning, research, screenshots, and operator tools out of tracked add-on paths.

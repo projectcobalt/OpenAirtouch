@@ -39,7 +39,7 @@ def create_app(controller: RuntimeController):
         finally:
             controller.stop()
 
-    app = FastAPI(title="OpenAirTouch", version="0.8.5", lifespan=lifespan)
+    app = FastAPI(title="OpenAirTouch", version="0.8.6", lifespan=lifespan)
     if StaticFiles is not None and ASSETS_DIR.exists():
         app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
     if StaticFiles is not None and WEB_ASSETS_DIR.exists():
