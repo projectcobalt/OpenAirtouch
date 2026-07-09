@@ -35,9 +35,12 @@ class TcpSerialTransport:
         if self._socket is None:
             raise RuntimeError("TCP serial transport is not open")
         try:
-            return self._socket.recv(size)
+            data = self._socket.recv(size)
         except socket.timeout:
             return b""
+        if data == b"":
+            raise ConnectionError("TCP serial transport closed")
+        return data
 
     def write(self, data: bytes | bytearray | Iterable[int]) -> int:
         if self._socket is None:

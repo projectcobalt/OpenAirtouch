@@ -154,6 +154,7 @@ class RuntimeController:
             "status": snap["controller"]["status"],
             "error": snap["controller"]["error"],
             "connected": connected,
+            "boot_mode": runtime_meta.get("boot_mode"),
             "address_assigned": runtime_meta.get("address_assigned", False),
             "boot_complete": runtime_meta.get("boot_complete", False),
             "protocol_mode": runtime_meta.get("protocol_mode"),

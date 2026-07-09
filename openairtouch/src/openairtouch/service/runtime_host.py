@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -59,6 +59,7 @@ class RuntimeHost:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._runtime: AirTouchRuntime | None = None
+        self._latched_protocol: str | None = None
 
     @property
     def runtime(self) -> AirTouchRuntime | None:
@@ -86,11 +87,13 @@ class RuntimeHost:
             self._on_status("starting" if self._runtime is None else "reconnecting", None)
             try:
                 with self._transport_factory() as transport, JsonlBusLogger(self.config.bus_log) as logger:
-                    runtime = AirTouchRuntime(transport, self._runtime_config())
+                    runtime = AirTouchRuntime(transport, self._next_runtime_config())
                     self._runtime = runtime
                     self._on_runtime_started(runtime)
                     self._on_status("running", None)
-                    for event in runtime.start():
+                    start_events = runtime.start()
+                    self._remember_latched_protocol(runtime)
+                    for event in start_events:
                         self._on_event(event, logger)
                     while not self._stop.is_set():
                         self._command_queue.drain_into(runtime)
@@ -102,6 +105,16 @@ class RuntimeHost:
                 self._on_error(exc)
                 self._sleep_before_reconnect()
         self._on_stopped()
+
+    def _next_runtime_config(self) -> RuntimeConfig:
+        config = self._runtime_config()
+        if config.protocol.lower() == "auto" and self._latched_protocol is not None:
+            return replace(config, protocol=self._latched_protocol, boot_mode="warm")
+        return replace(config, boot_mode="cold")
+
+    def _remember_latched_protocol(self, runtime: AirTouchRuntime) -> None:
+        if self._latched_protocol is None and runtime.protocol_latched and runtime.detected_protocol is not None:
+            self._latched_protocol = runtime.detected_protocol
 
     def _sleep_before_reconnect(self) -> None:
         deadline = time.monotonic() + max(0.1, self.config.reconnect_interval)

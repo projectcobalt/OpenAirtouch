@@ -20,7 +20,7 @@ from openairtouch.service.ha_client import HomeAssistantApiConfig
 from openairtouch.service.integration_loop import RuntimeIntegrationLoop, RuntimeIntegrationLoopConfig, datetime_payload
 from openairtouch.service.integrations import HomeAssistantIntegrationPoller
 from openairtouch.session.queue import TransactionSpec
-from openairtouch.transport import TcpSerialTransport
+from openairtouch.transport import TcpSerialConfig, TcpSerialTransport
 
 
 class FakeTransport:
@@ -37,6 +37,13 @@ class FakeTransport:
         wire = bytes(data)
         self.writes.append(wire)
         return len(wire)
+
+
+class DroppingTransport(FakeTransport):
+    def read(self, size: int = 512) -> bytes:
+        if self.reads:
+            return self.reads.popleft()
+        raise ConnectionError("tcp bridge closed")
 
 
 class FakeTransportContext(AbstractContextManager[FakeTransport]):
@@ -236,6 +243,17 @@ class RuntimeControllerTests(unittest.TestCase):
 
         self.assertIsInstance(transport, TcpSerialTransport)
 
+    def test_tcp_serial_transport_treats_empty_recv_as_closed(self) -> None:
+        class ClosedSocket:
+            def recv(self, _size: int) -> bytes:
+                return b""
+
+        transport = TcpSerialTransport(TcpSerialConfig(host="127.0.0.1", port=6638))
+        transport._socket = ClosedSocket()  # type: ignore[assignment]
+
+        with self.assertRaises(ConnectionError):
+            transport.read()
+
     def test_adaptive_config_updates_are_persisted_and_reloaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = f"{tmp}/adaptive_config.json"
@@ -358,6 +376,44 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(health["status"], "reconnecting")
         self.assertIn("TimeoutError", health["error"])
         self.assertTrue(controller.recent_events())
+
+    def test_reconnect_after_auto_detection_reuses_latched_protocol_as_warm_start(self) -> None:
+        first = DroppingTransport([wire_packet(0x55)])
+        second = FakeTransport()
+        transports = deque([first, second])
+
+        def factory() -> AbstractContextManager[FakeTransport]:
+            if transports:
+                return FakeTransportContext(transports.popleft())
+            return FakeTransportContext(second)
+
+        controller = RuntimeController(
+            RuntimeControllerConfig(
+                port="TEST",
+                runtime=RuntimeConfig(active=True, detect_seconds=0.01, init_transactions=False),
+                reconnect_interval=0.01,
+            ),
+            transport_factory=factory,
+        )
+
+        controller.start()
+        deadline = time.monotonic() + 1.0
+        snapshot = controller.snapshot()
+        runtime = (snapshot["runtime"] or {}).get("runtime", {})
+        while runtime.get("boot_mode") != "warm" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            snapshot = controller.snapshot()
+            runtime = (snapshot["runtime"] or {}).get("runtime", {})
+        controller.stop()
+
+        self.assertEqual(runtime["boot_mode"], "warm")
+        self.assertEqual(runtime["protocol_mode"], "at4")
+        self.assertEqual(runtime["protocol"], "at4")
+        self.assertEqual(runtime["detected_protocol"], "at4")
+        self.assertTrue(runtime["protocol_latched"])
+        self.assertTrue(runtime["connected"])
+        self.assertGreaterEqual(len(first.writes), 4)
+        self.assertGreaterEqual(len(second.writes), 1)
 
     def test_controller_error_notifies_waiters(self) -> None:
         controller = RuntimeController(RuntimeControllerConfig(port="TEST"))

@@ -30,6 +30,7 @@ class RuntimeConfig:
     touchpad_temperature: float = 23.0
     init_transactions: bool = True
     protocol: str = "auto"
+    boot_mode: str = "cold"
 
 
 @dataclass(frozen=True)
@@ -184,6 +185,7 @@ class AirTouchRuntime:
             "runtime": {
                 "active": self.config.active,
                 "connected": connected,
+                "boot_mode": self.config.boot_mode,
                 "protocol_mode": self.config.protocol,
                 "protocol": self._profile.name,
                 "protocol_name": self._profile.display_name,
