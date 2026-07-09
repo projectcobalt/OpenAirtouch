@@ -51,22 +51,20 @@ class AdaptiveStrategyMixin:
         if self.config.control_strategy == "hybrid" and target is not None:
             controlled_rooms = tuple(room for room in device.rooms if room.active and room.configured_control and room.temperature is not None)
             hybrid_status = self._hybrid_shadow_status(controlled_rooms, target, cooling, proposal)
-        status["evaluations"][-1].update({
-            "target": target,
-            "forecast_target": forecast_target,
-            "weather_opportunity": opportunity,
-            "weather_intent": self._weather_intent_status(device.ac_id, opportunity, None, {}, opportunity_cooling),
-            "mode_intent": _mode_intent_status(mode_intent),
-            "air_quality": self._air_quality_status(device, climate, mode_intent),
-            "outside_air": self._outside_air_status(mode_intent),
-            "mpc": _proposal_status(proposal),
-            "hybrid": hybrid_status,
-            "solar": {
-                "q_solar": solar.q_solar,
-                "source": solar.source,
-            },
-            "relaxation_allowed": opportunity["indoor_comfort_allows"] if target is None else _indoor_allows_relax(climate.indoor_temperature, target, cooling),
-        })
+        status["evaluations"][-1].update(_recommend_evaluation_status(
+            target=target,
+            forecast_target=forecast_target,
+            opportunity=opportunity,
+            weather_intent=self._weather_intent_status(device.ac_id, opportunity, None, {}, opportunity_cooling),
+            mode_intent=mode_intent,
+            air_quality=self._air_quality_status(device, climate, mode_intent),
+            outside_air=self._outside_air_status(mode_intent),
+            proposal=proposal,
+            hybrid=hybrid_status,
+            solar=solar,
+            climate=climate,
+            cooling=cooling,
+        ))
         name = _ac_name(device.ac_id, ac)
         _append_weather_recommendations(name, opportunity, status)
         if proposal is not None:
@@ -105,16 +103,11 @@ class AdaptiveStrategyMixin:
         opportunity = _weather_opportunity(outside, setpoint, cooling, weather, climate)
         suspension = self._weather_suspension(ac_id)
         should_stop = opportunity["outside_favourable"]
-        status["evaluations"][-1].update({
-            "target": None,
-            "forecast_target": None,
-            "weather_opportunity": opportunity,
-            "weather_intent": self._weather_intent_status(ac_id, opportunity, suspension, state, cooling),
-            "mode_intent": _mode_intent_status(mode_intent),
-            "mpc": None,
-            "hybrid": None,
-            "relaxation_allowed": opportunity["indoor_comfort_allows"],
-        })
+        status["evaluations"][-1].update(_weather_evaluation_status(
+            opportunity=opportunity,
+            weather_intent=self._weather_intent_status(ac_id, opportunity, suspension, state, cooling),
+            mode_intent=mode_intent,
+        ))
         name = _ac_name(ac_id, ac)
         if suspension is not None:
             if ac_status.get("power_on") is True:
@@ -224,19 +217,17 @@ class AdaptiveStrategyMixin:
             target = _clamp_setpoint(proposal.target, ac)
         setpoint = _number(ac_status.get("setpoint"))
         name = _ac_name(ac_id, ac)
-        status["evaluations"][-1].update({
-            "target": target,
-            "forecast_target": forecast_target,
-            "mode_intent": _mode_intent_status(mode_intent),
-            "air_quality": self._air_quality_status(device, climate, mode_intent),
-            "outside_air": self._outside_air_status(mode_intent),
-            "mpc": _proposal_status(proposal),
-            "solar": {
-                "q_solar": solar.q_solar,
-                "source": solar.source,
-            },
-            "relaxation_allowed": _indoor_allows_relax(climate.indoor_temperature, target, cooling),
-        })
+        status["evaluations"][-1].update(_zone_evaluation_status(
+            target=target,
+            forecast_target=forecast_target,
+            mode_intent=mode_intent,
+            air_quality=self._air_quality_status(device, climate, mode_intent),
+            outside_air=self._outside_air_status(mode_intent),
+            proposal=proposal,
+            solar=solar,
+            climate=climate,
+            cooling=cooling,
+        ))
         outside_air_specs = self._outside_air_action(state, ac_id, status, now, mode_intent)
         if not controlled_rooms:
             if not mode_intent.outside_air_intent:
@@ -310,27 +301,18 @@ class AdaptiveStrategyMixin:
         controlled_rooms = tuple(room for room in device.rooms if room.active and room.control_enabled and room.temperature is not None)
         controlled_group_ids = {room.id for room in controlled_rooms}
         control_temperature = _hybrid_control_temperature(controlled_rooms, target, cooling, proposal.power_fraction if proposal else 0.0)
-        status["evaluations"][-1].update({
-            "target": target,
-            "forecast_target": forecast_target,
-            "mode_intent": _mode_intent_status(mode_intent),
-            "air_quality": self._air_quality_status(device, climate, mode_intent),
-            "outside_air": self._outside_air_status(mode_intent),
-            "mpc": _proposal_status(proposal),
-            "hybrid": {
-                "strategy": "hybrid",
-                "control_temperature": control_temperature,
-                "control_temperature_source": "synthetic_weighted_zone_demand" if control_temperature is not None else None,
-                "damper_percentages": {},
-                "touchpad_temperature_commanded": False,
-                "touchpad_temperature_note": None,
-            },
-            "solar": {
-                "q_solar": solar.q_solar,
-                "source": solar.source,
-            },
-            "relaxation_allowed": _indoor_allows_relax(climate.indoor_temperature, target, cooling),
-        })
+        status["evaluations"][-1].update(_hybrid_evaluation_status(
+            target=target,
+            forecast_target=forecast_target,
+            mode_intent=mode_intent,
+            air_quality=self._air_quality_status(device, climate, mode_intent),
+            outside_air=self._outside_air_status(mode_intent),
+            proposal=proposal,
+            control_temperature=control_temperature,
+            solar=solar,
+            climate=climate,
+            cooling=cooling,
+        ))
         outside_air_specs = self._outside_air_action(state, ac_id, status, now, mode_intent)
         if mode_intent.mode not in (1, 4):
             mode_spec = self._set_ac_mode(state, ac_id, mode_intent, status, now)
@@ -465,6 +447,116 @@ def _hybrid_control_temperature(rooms: tuple[Any, ...], target: int, cooling: bo
     offset = demand * 2.0
     synthetic = max(average, target + offset) if cooling else min(average, target - offset)
     return round(synthetic, 1)
+
+
+def _recommend_evaluation_status(
+    *,
+    target: int | None,
+    forecast_target: int | None,
+    opportunity: dict[str, Any],
+    weather_intent: dict[str, Any],
+    mode_intent: Any,
+    air_quality: dict[str, Any],
+    outside_air: dict[str, Any],
+    proposal: Any,
+    hybrid: dict[str, Any] | None,
+    solar: SolarSignal,
+    climate: ClimateSignal,
+    cooling: bool,
+) -> dict[str, Any]:
+    relaxation_allowed = opportunity["indoor_comfort_allows"] if target is None else _indoor_allows_relax(climate.indoor_temperature, target, cooling)
+    return {
+        "target": target,
+        "forecast_target": forecast_target,
+        "weather_opportunity": opportunity,
+        "weather_intent": weather_intent,
+        "mode_intent": _mode_intent_status(mode_intent),
+        "air_quality": air_quality,
+        "outside_air": outside_air,
+        "mpc": _proposal_status(proposal),
+        "hybrid": hybrid,
+        "solar": _solar_status(solar),
+        "relaxation_allowed": relaxation_allowed,
+    }
+
+
+def _weather_evaluation_status(*, opportunity: dict[str, Any], weather_intent: dict[str, Any], mode_intent: Any) -> dict[str, Any]:
+    return {
+        "target": None,
+        "forecast_target": None,
+        "weather_opportunity": opportunity,
+        "weather_intent": weather_intent,
+        "mode_intent": _mode_intent_status(mode_intent),
+        "mpc": None,
+        "hybrid": None,
+        "relaxation_allowed": opportunity["indoor_comfort_allows"],
+    }
+
+
+def _zone_evaluation_status(
+    *,
+    target: int,
+    forecast_target: int | None,
+    mode_intent: Any,
+    air_quality: dict[str, Any],
+    outside_air: dict[str, Any],
+    proposal: Any,
+    solar: SolarSignal,
+    climate: ClimateSignal,
+    cooling: bool,
+) -> dict[str, Any]:
+    return {
+        "target": target,
+        "forecast_target": forecast_target,
+        "mode_intent": _mode_intent_status(mode_intent),
+        "air_quality": air_quality,
+        "outside_air": outside_air,
+        "mpc": _proposal_status(proposal),
+        "solar": _solar_status(solar),
+        "relaxation_allowed": _indoor_allows_relax(climate.indoor_temperature, target, cooling),
+    }
+
+
+def _hybrid_evaluation_status(
+    *,
+    target: int,
+    forecast_target: int | None,
+    mode_intent: Any,
+    air_quality: dict[str, Any],
+    outside_air: dict[str, Any],
+    proposal: Any,
+    control_temperature: float | None,
+    solar: SolarSignal,
+    climate: ClimateSignal,
+    cooling: bool,
+) -> dict[str, Any]:
+    status = _zone_evaluation_status(
+        target=target,
+        forecast_target=forecast_target,
+        mode_intent=mode_intent,
+        air_quality=air_quality,
+        outside_air=outside_air,
+        proposal=proposal,
+        solar=solar,
+        climate=climate,
+        cooling=cooling,
+    )
+    status["hybrid"] = {
+        "strategy": "hybrid",
+        "control_temperature": control_temperature,
+        "control_temperature_source": "synthetic_weighted_zone_demand" if control_temperature is not None else None,
+        "damper_percentages": {},
+        "touchpad_temperature_commanded": False,
+        "touchpad_temperature_note": None,
+    }
+    return status
+
+
+def _solar_status(solar: SolarSignal) -> dict[str, Any]:
+    return {
+        "q_solar": solar.q_solar,
+        "source": solar.source,
+    }
 
 
 def _clamp_int(value: Any, minimum: int, maximum: int) -> int:

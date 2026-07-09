@@ -122,6 +122,46 @@ class AdaptiveContractTests(unittest.TestCase):
         self.assertEqual(ui["surfaces"]["zone"]["fields"][0]["label"], "Target")
         self.assertEqual(ui["plan"]["target"], 22.0)
 
+    def test_controller_status_includes_off_ui_contract(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="off"))
+
+        controller.evaluate(runtime_state(ac_setpoint=22), integrations(30), now=1.0)
+
+        ui = controller.status()["ui"]
+        self.assertEqual(ui["summary"]["mode"], "off")
+        self.assertEqual(ui["summary"]["authority"], "off")
+        self.assertEqual(ui["summary"]["intent"], "off")
+
+    def test_controller_status_includes_runtime_unavailable_ui_contract(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="adaptive"))
+
+        controller.evaluate(None, integrations(30), now=1.0)
+
+        ui = controller.status()["ui"]
+        self.assertEqual(ui["summary"]["headline"], "Runtime state is not available")
+        self.assertEqual(ui["summary"]["authority"], "control")
+        self.assertEqual(ui["inputs"]["errors"], [])
+
+    def test_controller_status_includes_missing_outside_temperature_ui_contract(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="weather"))
+
+        controller.evaluate(runtime_state(ac_setpoint=22), integrations(None), now=1.0)
+
+        ui = controller.status()["ui"]
+        self.assertEqual(ui["summary"]["headline"], "Outside temperature is not available")
+        self.assertIsNone(ui["inputs"]["outside_temperature"])
+        self.assertEqual(ui["surfaces"]["environment"]["fields"][0]["value"], "-")
+
+    def test_controller_status_includes_weather_ui_contract(self) -> None:
+        controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="weather", command_cooldown=1))
+
+        controller.evaluate(runtime_state(ac_setpoint=24), integrations(20), now=1.0)
+
+        ui = controller.status()["ui"]
+        self.assertEqual(ui["summary"]["intent"], "turn_off")
+        self.assertEqual(ui["surfaces"]["environment"]["fields"][0]["raw"], 20.0)
+        self.assertEqual(ui["commands"]["command_intents"][0]["action"], "ac_status")
+
     def test_controller_status_includes_hybrid_ui_contract(self) -> None:
         controller = AdaptiveController(
             AdaptiveConfig(
