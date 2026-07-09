@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import threading
-import time
 import logging
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .. import commands
-from ..constants import ADDR_TOUCHPAD_1
 from ..live_log import JsonlBusLogger
 from ..runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent, TransportLike
 from ..session.queue import TransactionSpec
@@ -32,13 +27,14 @@ from .event_log import controller_error_record as _controller_error_record
 from .event_log import event_record as _event_record
 from .event_log import frame_log_line as _frame_log_line
 from .ha_client import HomeAssistantApiConfig
+from .integration_loop import RuntimeIntegrationLoop, RuntimeIntegrationLoopConfig
+from .integration_loop import datetime_payload as _datetime_payload
+from .integration_loop import touchpad_temperature_status as _touchpad_temperature_status
 from .integrations import HomeAssistantIntegrationPoller
 from .runtime_host import RuntimeHost, RuntimeHostConfig
 from .transport_factory import TransportFactory, build_transport_factory
-from .touchpad_temperature import TouchpadTemperatureResult, resolve_touchpad_temperature
 
 LOG = logging.getLogger("uvicorn.error")
-DATETIME_SYNC_INTERVAL = 60.0
 
 
 @dataclass(frozen=True)
@@ -88,15 +84,14 @@ class RuntimeController:
         self._adaptive = AdaptiveController(_load_adaptive_config(config.adaptive, config.adaptive_config_path))
         self._adaptive_learning_path = config.adaptive_learning_path
         self._adaptive.import_learning(_load_adaptive_learning(config.adaptive_learning_path))
-        self._next_adaptive_learning_save = 0.0
-        self._touchpad_temperature = TouchpadTemperatureResult(
-            temperature=self._runtime_config.touchpad_temperature,
-            source="configured",
-            detail={},
+        self._integration_loop = RuntimeIntegrationLoop(
+            config=RuntimeIntegrationLoopConfig(adaptive_learning_path=config.adaptive_learning_path),
+            integrations=self._integrations,
+            adaptive=self._adaptive,
+            runtime_config=lambda: self._runtime_config,
+            on_changed=self._mark_changed,
+            on_adaptive_event=self._record_adaptive_event,
         )
-        self._next_datetime_sync = 0.0
-        self._last_datetime_sync: dict[str, Any] | None = None
-        self._datetime_sync_error: str | None = None
         self._host = RuntimeHost(
             config=RuntimeHostConfig(
                 bus_log=config.bus_log,
@@ -136,7 +131,7 @@ class RuntimeController:
             integrations.update({
                 "error_resolver": self._error_resolver.status(),
                 "adaptive": self._adaptive.status(),
-                "touchpad_temperature": _touchpad_temperature_status(self._touchpad_temperature),
+                "touchpad_temperature": _touchpad_temperature_status(self._integration_loop.touchpad_temperature),
             })
             return {
                 "controller": {
@@ -144,7 +139,7 @@ class RuntimeController:
                     "error": self._error,
                     "thread_alive": self._host.thread_alive,
                     "config": self.public_config(),
-                    "datetime_sync": self._datetime_sync_status(runtime_snapshot),
+                    "datetime_sync": self._integration_loop.datetime_sync_status(runtime_snapshot),
                 },
                 "runtime": runtime_snapshot,
                 "integrations": integrations,
@@ -258,10 +253,7 @@ class RuntimeController:
         self._error_resolver.stop()
 
     def _runtime_tick(self, runtime: AirTouchRuntime, _bus_logger: JsonlBusLogger) -> None:
-        self._poll_weather()
-        self._run_adaptive(runtime)
-        self._update_touchpad_temperature(runtime)
-        self._sync_datetime_if_due(runtime)
+        self._integration_loop.tick(runtime)
 
     def _record_event(self, event: RuntimeEvent, bus_logger: JsonlBusLogger) -> None:
         record = _event_record(event)
@@ -287,129 +279,25 @@ class RuntimeController:
             self._mark_changed_locked()
 
     def _poll_weather(self) -> None:
-        if self._integrations.poll():
-            with self._lock:
-                self._mark_changed_locked()
+        self._integration_loop.poll_weather()
 
     def _run_adaptive(self, runtime: AirTouchRuntime) -> None:
-        runtime_snapshot = runtime.snapshot()
-        integrations = self._integrations.runtime_inputs()
-        specs = self._adaptive.evaluate(runtime_snapshot, integrations)
-        if specs:
-            self._save_adaptive_learning_now()
-        else:
-            self._save_adaptive_learning_periodically()
-        if specs:
-            runtime.enqueue(specs)
-            with self._lock:
-                for spec in specs:
-                    self._events.append({
-                        "event": "adaptive",
-                        "message": f"queued {spec.name}",
-                        "command": f"0x{spec.command:02X}",
-                        "state_changed": False,
-                    })
-                self._mark_changed_locked()
+        self._integration_loop.run_adaptive(runtime)
 
     def _update_touchpad_temperature(self, runtime: AirTouchRuntime) -> None:
-        runtime_snapshot = runtime.snapshot()
-        integrations = self._integrations.indoor_input()
-        result = resolve_touchpad_temperature(
-            runtime_snapshot,
-            integrations,
-            self._adaptive.status(),
-            fallback=self._runtime_config.touchpad_temperature,
-        )
-        previous = self._touchpad_temperature
-        runtime.set_touchpad_temperature(result.temperature, source=result.source, detail=result.detail)
-        if (
-            previous.temperature == result.temperature
-            and previous.source == result.source
-            and previous.detail == result.detail
-        ):
-            return
-        with self._lock:
-            self._touchpad_temperature = result
-            self._mark_changed_locked()
+        self._integration_loop.update_touchpad_temperature(runtime)
 
     def _sync_datetime_if_due(self, runtime: AirTouchRuntime) -> None:
-        now = time.monotonic()
-        if now < self._next_datetime_sync:
-            return
-        self._next_datetime_sync = now + DATETIME_SYNC_INTERVAL
-        session = runtime.session
-        if session is None or not runtime.address_assigned or session.src != ADDR_TOUCHPAD_1:
-            return
-
-        try:
-            clock, time_zone, source = self._clock_now()
-            payload = _datetime_payload(clock)
-            spec = TransactionSpec.from_command(
-                commands.datetime_command(**payload),
-                name="datetime_sync",
-            )
-            runtime.enqueue([spec])
-            status = {
-                "last_queued_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                "synced_time": clock.isoformat(timespec="seconds"),
-                "time_zone": time_zone,
-                "source": source,
-                "touchpad_address": f"0x{session.src:02X}",
-                "command": "0x40",
-                "payload": payload,
-            }
-            with self._lock:
-                self._last_datetime_sync = status
-                self._datetime_sync_error = None
-                self._mark_changed_locked()
-        except Exception as exc:  # pragma: no cover - defensive live clock path
-            with self._lock:
-                self._datetime_sync_error = f"{type(exc).__name__}: {exc}"
-                self._mark_changed_locked()
-
-    def _clock_now(self) -> tuple[datetime, str, str]:
-        time_zone = self._integrations.home_assistant_timezone()
-        if time_zone:
-            try:
-                clock = datetime.now(ZoneInfo(time_zone))
-                return clock, time_zone, "home_assistant"
-            except ZoneInfoNotFoundError:
-                pass
-        clock = datetime.now().astimezone()
-        zone_name = clock.tzname() or str(clock.tzinfo or "local")
-        return clock, zone_name, "host"
+        self._integration_loop.sync_datetime_if_due(runtime)
 
     def _datetime_sync_status(self, runtime_snapshot: dict[str, Any] | None) -> dict[str, Any]:
-        runtime = (runtime_snapshot or {}).get("runtime") or {}
-        source_address = runtime.get("src")
-        current = datetime.now().astimezone()
-        status: dict[str, Any] = {
-            "enabled": source_address == f"0x{ADDR_TOUCHPAD_1:02X}",
-            "source_address": source_address,
-            "required_source_address": f"0x{ADDR_TOUCHPAD_1:02X}",
-            "current_time": current.isoformat(timespec="seconds"),
-            "time_zone": current.tzname() or str(current.tzinfo or "local"),
-            "interval_seconds": int(DATETIME_SYNC_INTERVAL),
-            "error": self._datetime_sync_error,
-        }
-        if self._last_datetime_sync is not None:
-            status.update(self._last_datetime_sync)
-        return status
+        return self._integration_loop.datetime_sync_status(runtime_snapshot)
 
     def _save_adaptive_learning_periodically(self) -> None:
-        if self._adaptive_learning_path is None:
-            return
-        now = time.monotonic()
-        if now < self._next_adaptive_learning_save:
-            return
-        self._next_adaptive_learning_save = now + 60.0
-        self._save_adaptive_learning_now()
+        self._integration_loop.save_adaptive_learning_periodically()
 
     def _save_adaptive_learning_now(self) -> None:
-        if self._adaptive_learning_path is None:
-            return
-        self._next_adaptive_learning_save = time.monotonic() + 60.0
-        _save_adaptive_learning(self._adaptive_learning_path, self._adaptive.export_learning())
+        self._integration_loop.save_adaptive_learning_now()
 
     def _default_transport_factory(self) -> AbstractContextManager[TransportLike]:
         return build_transport_factory(
@@ -423,25 +311,13 @@ class RuntimeController:
     def _mark_changed_locked(self) -> None:
         self._events.mark_changed()
 
+    def _mark_changed(self) -> None:
+        with self._lock:
+            self._mark_changed_locked()
 
-def _touchpad_temperature_status(result: TouchpadTemperatureResult) -> dict[str, Any]:
-    return {
-        "temperature": result.temperature,
-        "source": result.source,
-        "detail": dict(result.detail),
-    }
-
-
-def _datetime_payload(clock: datetime) -> dict[str, int]:
-    return {
-        "year": clock.year,
-        "month": clock.month,
-        "day": clock.day,
-        "weekday": clock.isoweekday() % 7 + 1,
-        "hour": clock.hour,
-        "minute": clock.minute,
-        "second": clock.second,
-    }
+    def _record_adaptive_event(self, event: dict[str, Any]) -> None:
+        with self._lock:
+            self._events.append(event)
 
 
 def _add_error_displays(runtime_snapshot: dict[str, Any], resolver: RemoteErrorResolver) -> None:
