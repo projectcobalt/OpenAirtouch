@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add a protocol profile boundary so runtime and command handling can delegate AirTouch-specific behavior while keeping higher service layers OpenAirTouch-oriented.
+- Split the service controller into focused command queue, event log, config store, transport factory, runtime host, and runtime integration loop modules.
+- Add adaptive input, UI, and command intent contracts, and move adaptive command construction out of the main adaptive controller.
+- Remove controller integration compatibility shims and retarget tests to the modules that own datetime sync, Home Assistant polling, adaptive persistence, and event records.
+
 ## 0.8.6 - 2026-07-09
 
 - Rename internal package and frontend helper paths from airtouch4 to openairtouch while keeping user-facing AirTouch protocol wording where it describes the actual bus.
