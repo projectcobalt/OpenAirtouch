@@ -103,7 +103,12 @@ class AT5Session:
             del self._rx_buffer[:-1024]
         return packets
 
-    def choose_available_address(self) -> int | None:
+    def choose_available_address(
+        self,
+        *,
+        require_evidence: bool = False,
+        allow_shared_secondary: bool = False,
+    ) -> int | None:
         return self.src
 
     def occupied_touchpad_addresses(self) -> list[int]:

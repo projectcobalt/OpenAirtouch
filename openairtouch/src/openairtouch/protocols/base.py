@@ -71,7 +71,12 @@ class ProtocolSession(Protocol):
     def feed_rx(self, data: bytes) -> list[ProtocolPacket]:
         ...
 
-    def choose_available_address(self) -> int | None:
+    def choose_available_address(
+        self,
+        *,
+        require_evidence: bool = False,
+        allow_shared_secondary: bool = False,
+    ) -> int | None:
         ...
 
     def occupied_touchpad_addresses(self) -> list[int]:

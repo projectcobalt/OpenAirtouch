@@ -26,11 +26,13 @@ class RuntimeConfig:
 
     active: bool = True
     detect_seconds: float = 3.0
+    address_detect_seconds: float | None = None
     heartbeat_interval: float = 30.0
     touchpad_temperature: float = 23.0
     init_transactions: bool = True
     protocol: str = "auto"
     boot_mode: str = "cold"
+    allow_shared_secondary_address: bool = False
 
 
 @dataclass(frozen=True)
@@ -121,7 +123,7 @@ class AirTouchRuntime:
             packet, wire = self._session.build_touchpad_info_request()
             events.append(self._tx_event(packet, wire))
 
-        detect_until = current if self.config.protocol.lower() == "auto" else current + self.config.detect_seconds
+        detect_until = current + self._address_detect_seconds()
         while time.monotonic() < detect_until:
             events.extend(self._read_available())
 
@@ -186,6 +188,8 @@ class AirTouchRuntime:
                 "active": self.config.active,
                 "connected": connected,
                 "boot_mode": self.config.boot_mode,
+                "address_detect_seconds": self._address_detect_seconds(),
+                "allow_shared_secondary_address": self.config.allow_shared_secondary_address,
                 "protocol_mode": self.config.protocol,
                 "protocol": self._profile.name,
                 "protocol_name": self._profile.display_name,
@@ -245,7 +249,22 @@ class AirTouchRuntime:
         return "; ".join(self._profile.state_messages(self._state, decoded))
 
     def _assign_address(self) -> int | None:
-        return self._session.choose_available_address()
+        return self._session.choose_available_address(
+            require_evidence=self._requires_address_evidence(),
+            allow_shared_secondary=self.config.allow_shared_secondary_address,
+        )
+
+    def _address_detect_seconds(self) -> float:
+        if self.config.address_detect_seconds is not None:
+            return max(0.0, self.config.address_detect_seconds)
+        return max(0.0, self.config.detect_seconds)
+
+    def _requires_address_evidence(self) -> bool:
+        return self._profile.name == "at4" and (
+            self.config.protocol.lower() == "auto"
+            or self.config.boot_mode == "warm"
+            or self.config.allow_shared_secondary_address
+        )
 
     @property
     def _profile(self) -> ProtocolProfile:

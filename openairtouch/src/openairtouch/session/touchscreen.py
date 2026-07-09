@@ -121,13 +121,25 @@ class TouchscreenSession:
             return
         self.seen_touchpad_addresses.add(address)
         self.seen_touchpads[address] = decoded
-    def choose_available_address(self) -> int | None:
+
+    def choose_available_address(
+        self,
+        *,
+        require_evidence: bool = False,
+        allow_shared_secondary: bool = False,
+    ) -> int | None:
         occupied = set(self.seen_touchpad_addresses)
+        if require_evidence and not occupied:
+            return None
 
         for slot in (1, 2):
             if slot not in occupied:
                 self.src = TOUCHPAD_SLOT_TO_ADDRESS[slot]
                 return self.src
+
+        if allow_shared_secondary:
+            self.src = TOUCHPAD_SLOT_TO_ADDRESS[2]
+            return self.src
 
         return None
 

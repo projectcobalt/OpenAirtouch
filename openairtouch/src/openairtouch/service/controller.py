@@ -155,6 +155,8 @@ class RuntimeController:
             "error": snap["controller"]["error"],
             "connected": connected,
             "boot_mode": runtime_meta.get("boot_mode"),
+            "address_detect_seconds": runtime_meta.get("address_detect_seconds"),
+            "allow_shared_secondary_address": runtime_meta.get("allow_shared_secondary_address", False),
             "address_assigned": runtime_meta.get("address_assigned", False),
             "boot_complete": runtime_meta.get("boot_complete", False),
             "protocol_mode": runtime_meta.get("protocol_mode"),

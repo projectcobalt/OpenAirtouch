@@ -33,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--http-port", type=int, default=8099, help="HTTP bind port. Default matches HA ingress convention.")
     parser.add_argument("--bus-log", type=Path, help="Optional raw RX/TX/init JSONL log.")
     parser.add_argument("--detect-seconds", type=float, default=3.0)
+    parser.add_argument("--address-detect-seconds", type=float, help="Seconds to observe existing touchpad addresses after protocol detection. Defaults to --detect-seconds.")
+    parser.add_argument("--allow-shared-secondary-address", action="store_true", help="Allow active startup on 0x91 even when another secondary touchpad/OpenAirTouch is seen.")
     parser.add_argument("--heartbeat-interval", type=float, default=30.0)
     parser.add_argument("--weather-entity", default="")
     parser.add_argument("--forecast-weather-entity", default="")
@@ -85,9 +87,11 @@ def main(argv: list[str] | None = None) -> int:
     runtime_config = RuntimeConfig(
         active=True,
         detect_seconds=args.detect_seconds,
+        address_detect_seconds=args.address_detect_seconds,
         heartbeat_interval=args.heartbeat_interval,
         init_transactions=True,
         protocol=args.protocol,
+        allow_shared_secondary_address=args.allow_shared_secondary_address,
     )
     controller = RuntimeController(
         RuntimeControllerConfig(

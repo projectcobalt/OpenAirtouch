@@ -46,6 +46,19 @@ class DroppingTransport(FakeTransport):
         raise ConnectionError("tcp bridge closed")
 
 
+class DropAfterStartTransport(FakeTransport):
+    def __init__(self, reads: Iterable[bytes] = ()) -> None:
+        super().__init__(reads)
+        self.drop = False
+
+    def read(self, size: int = 512) -> bytes:
+        if self.reads:
+            return self.reads.popleft()
+        if self.drop:
+            raise ConnectionError("tcp bridge closed")
+        return b""
+
+
 class FakeTransportContext(AbstractContextManager[FakeTransport]):
     def __init__(self, transport: FakeTransport) -> None:
         self.transport = transport
@@ -86,6 +99,15 @@ class FakeIntegrationPoller:
 
 def wire_packet(command: int, payload: bytes = b"", *, src: int = 0x80, dest: int = 0x90) -> bytes:
     return AirTouchPacket(dest=dest, src=src, packet_id=1, command=command, payload=payload, raw_mode=True).encode(stuff_raw=True)
+
+
+def touchpad_presence(slot: int) -> bytes:
+    payload = bytearray(21)
+    payload[0] = 0xFF
+    payload[1] = 0x01
+    payload[10] = 0x40 | slot
+    payload[20] = 0
+    return wire_packet(0x1F, bytes(payload), src=0x90 if slot == 1 else 0x91, dest=0x9F)
 
 
 def integration_loop(
@@ -141,11 +163,11 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(len(runtime.transactions.pending), 2)
 
     def test_controller_starts_runtime_and_reports_health(self) -> None:
-        transport = FakeTransport()
+        transport = FakeTransport([wire_packet(0x55), touchpad_presence(1)])
         controller = RuntimeController(
             RuntimeControllerConfig(
                 port="TEST",
-                runtime=RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False),
+                runtime=RuntimeConfig(active=True, detect_seconds=0.01, init_transactions=False),
                 loop_sleep=0.001,
             ),
             transport_factory=lambda: FakeTransportContext(transport),
@@ -166,11 +188,11 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertTrue(transport.writes)
 
     def test_enqueue_command_reaches_runtime_queue(self) -> None:
-        transport = FakeTransport()
+        transport = FakeTransport([wire_packet(0x55), touchpad_presence(1)])
         controller = RuntimeController(
             RuntimeControllerConfig(
                 port="TEST",
-                runtime=RuntimeConfig(active=True, detect_seconds=0.0, init_transactions=False, heartbeat_interval=999.0),
+                runtime=RuntimeConfig(active=True, detect_seconds=0.01, init_transactions=False, heartbeat_interval=999.0),
                 loop_sleep=0.001,
             ),
             transport_factory=lambda: FakeTransportContext(transport),
@@ -378,8 +400,8 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertTrue(controller.recent_events())
 
     def test_reconnect_after_auto_detection_reuses_latched_protocol_as_warm_start(self) -> None:
-        first = DroppingTransport([wire_packet(0x55)])
-        second = FakeTransport()
+        first = DropAfterStartTransport([wire_packet(0x55), touchpad_presence(1)])
+        second = FakeTransport([touchpad_presence(1)])
         transports = deque([first, second])
 
         def factory() -> AbstractContextManager[FakeTransport]:
@@ -397,6 +419,12 @@ class RuntimeControllerTests(unittest.TestCase):
         )
 
         controller.start()
+        cold_deadline = time.monotonic() + 1.0
+        runtime = (controller.snapshot()["runtime"] or {}).get("runtime", {})
+        while not runtime.get("connected") and time.monotonic() < cold_deadline:
+            time.sleep(0.01)
+            runtime = (controller.snapshot()["runtime"] or {}).get("runtime", {})
+        first.drop = True
         deadline = time.monotonic() + 1.0
         snapshot = controller.snapshot()
         runtime = (snapshot["runtime"] or {}).get("runtime", {})
@@ -412,6 +440,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(runtime["detected_protocol"], "at4")
         self.assertTrue(runtime["protocol_latched"])
         self.assertTrue(runtime["connected"])
+        self.assertEqual(runtime["src"], "0x91")
         self.assertGreaterEqual(len(first.writes), 4)
         self.assertGreaterEqual(len(second.writes), 1)
 
