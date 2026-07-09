@@ -4,6 +4,7 @@
 
 - Add a protocol profile boundary so runtime and command handling can delegate AirTouch-specific behavior while keeping higher service layers OpenAirTouch-oriented.
 - Split the service controller into focused command queue, event log, config store, transport factory, runtime host, and runtime integration loop modules.
+- Split the service API factory from static UI asset handling, HTTP routes, and WebSocket event streaming.
 - Add adaptive input, UI, and command intent contracts, and move adaptive command construction out of the main adaptive controller.
 - Remove controller integration compatibility shims and retarget tests to the modules that own datetime sync, Home Assistant polling, adaptive persistence, and event records.
 

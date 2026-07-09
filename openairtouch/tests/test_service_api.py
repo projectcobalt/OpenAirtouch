@@ -14,7 +14,8 @@ from unittest.mock import patch
 import uvicorn
 import websockets
 
-from openairtouch.service.api import WEB_INDEX, create_app
+from openairtouch.service.api import create_app
+from openairtouch.service.api_assets import WEB_INDEX
 
 
 class FakeController:
@@ -113,7 +114,7 @@ class ServiceApiTests(unittest.TestCase):
     def test_missing_svelte_build_fails_startup(self) -> None:
         missing_index = Path(__file__).with_name("missing-svelte-index.html")
 
-        with patch("openairtouch.service.api.WEB_INDEX", missing_index):
+        with patch("openairtouch.service.api_assets.WEB_INDEX", missing_index):
             with self.assertRaisesRegex(RuntimeError, "UI build is missing"):
                 create_app(FakeController())
 
