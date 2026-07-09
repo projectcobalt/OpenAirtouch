@@ -6,7 +6,14 @@ from typing import Any
 
 from ..session.queue import TransactionSpec
 from .adaptive_contracts import AdaptiveCommandIntent
-from .adaptive_restore import _ac_setting_records_from_state, _group_for_id, _indexed, _number, _optional_int
+from .adaptive_runtime_state import (
+    _ac_setting_records_from_state,
+    _command_value,
+    _group_for_id,
+    _indexed,
+    _number,
+    _optional_int,
+)
 from .commands import CommandRequestError, build_transaction
 
 
@@ -134,13 +141,3 @@ class AdaptiveCommandMixin:
             return False
         self._last_command[key] = (value, now)
         return True
-
-
-def _command_value(payload: dict[str, Any]) -> int | bool | None:
-    for key in ("mode", "setpoint", "percentage", "temperature", "ctrl_thermostat", "power_on"):
-        if key in payload:
-            value = payload[key]
-            if isinstance(value, bool):
-                return value
-            return _optional_int(value)
-    return None

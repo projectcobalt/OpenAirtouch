@@ -285,7 +285,7 @@ class RuntimeControllerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "adaptive_learning.json"
             adaptive = AdaptiveController(AdaptiveConfig())
-            adaptive._mpc.zone_models[3] = ZoneThermalModel(passive_samples=4)
+            adaptive.import_learning({"zones": {"3": ZoneThermalModel(passive_samples=4).to_dict()}})
             integration_loop(adaptive=adaptive, learning_path=path).save_adaptive_learning_now()
 
             second = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_learning_path=path))
@@ -296,8 +296,11 @@ class RuntimeControllerTests(unittest.TestCase):
     def test_adaptive_model_management_is_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "adaptive_learning.json"
+            path.write_text(
+                json.dumps({"version": 1, "zones": {"2": ZoneThermalModel(passive_samples=4).to_dict()}, "history": {}}),
+                encoding="utf-8",
+            )
             controller = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_learning_path=path))
-            controller._adaptive._mpc.zone_models[2] = ZoneThermalModel(passive_samples=4)
             version = controller.change_version()
 
             accelerated = controller.manage_adaptive_learning({"action": "accelerate_zone", "zone": 2, "enabled": True})

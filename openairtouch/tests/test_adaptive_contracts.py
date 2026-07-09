@@ -4,7 +4,7 @@ import unittest
 
 from openairtouch.service.adaptive_contracts import AdaptiveCommandIntent, build_adaptive_input_contract, build_adaptive_ui_contract
 from openairtouch.service.adaptive import AdaptiveConfig, AdaptiveController
-from tests.test_adaptive import integrations, ready_heating_model, runtime_state
+from tests.test_adaptive import integrations, ready_heating_model, runtime_state, seed_learning_model
 
 
 class AdaptiveContractTests(unittest.TestCase):
@@ -140,7 +140,7 @@ class AdaptiveContractTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19),
@@ -208,7 +208,7 @@ class AdaptiveContractTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25),

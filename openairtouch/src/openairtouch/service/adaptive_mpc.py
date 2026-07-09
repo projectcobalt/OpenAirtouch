@@ -8,7 +8,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from .adaptive_compressor import CompressorTracker
 from .adaptive_model import AdaptiveRoom, AdaptiveSnapshot
+from .adaptive_mpc_status import mpc_status
 
 
 MODE_IDLE = "idle"
@@ -601,91 +603,6 @@ class ZoneThermalModel:
             model.ekf = ThermalEKF.from_dict(data["ekf"])
         return model
 
-
-@dataclass
-class CompressorTracker:
-    ac_state: dict[int, bool] = field(default_factory=dict)
-    state: dict[int, bool] = field(default_factory=dict)
-    changed_at: dict[int, float] = field(default_factory=dict)
-    groups: tuple[tuple[int, ...], ...] = ()
-
-    def configure(self, groups: tuple[tuple[int, ...], ...]) -> None:
-        self.groups = tuple(tuple(group) for group in groups)
-        self._recompute_all(0.0, preserve_existing=True)
-
-    def observe(self, ac_id: int, power_on: bool, now: float) -> None:
-        self.ac_state[ac_id] = power_on
-        self._recompute_group(self._group_key(ac_id), now)
-
-    def can_power_off(
-        self,
-        ac_id: int,
-        now: float,
-        minimum_run_seconds: float,
-        *,
-        planned_off: set[int] | None = None,
-    ) -> bool:
-        key = self._group_key(ac_id)
-        if self._other_members_on(ac_id, planned_off=planned_off or set()):
-            return True
-        if self.state.get(key) is not True:
-            return True
-        changed = self.changed_at.get(key)
-        return changed is None or now - changed >= minimum_run_seconds
-
-    def can_power_on(self, ac_id: int, now: float, minimum_off_seconds: float) -> bool:
-        key = self._group_key(ac_id)
-        if self.state.get(key) is True:
-            return True
-        if self.state.get(key) is not False:
-            return True
-        changed = self.changed_at.get(key)
-        return changed is None or now - changed >= minimum_off_seconds
-
-    def status(self, now: float) -> dict[str, Any]:
-        return {
-            str(key): {
-                "acs": list(self._members_for_key(key)),
-                "power_on": power_on,
-                "seconds_since_change": None if key not in self.changed_at else round(now - self.changed_at[key], 1),
-            }
-            for key, power_on in sorted(self.state.items())
-        }
-
-    def _recompute_all(self, now: float, *, preserve_existing: bool = False) -> None:
-        keys = {self._group_key(ac_id) for ac_id in self.ac_state}
-        keys.update(range(len(self.groups)))
-        for key in sorted(keys):
-            self._recompute_group(key, now, preserve_existing=preserve_existing)
-
-    def _recompute_group(self, key: int, now: float, *, preserve_existing: bool = False) -> None:
-        power_on = any(self.ac_state.get(member) is True for member in self._members_for_key(key))
-        previous = self.state.get(key)
-        if previous is None:
-            self.state[key] = power_on
-            if not preserve_existing:
-                self.changed_at[key] = now
-            return
-        if previous != power_on:
-            self.state[key] = power_on
-            self.changed_at[key] = now
-
-    def _group_key(self, ac_id: int) -> int:
-        for index, group in enumerate(self.groups):
-            if ac_id in group:
-                return index
-        return len(self.groups) + ac_id
-
-    def _members_for_key(self, key: int) -> tuple[int, ...]:
-        if 0 <= key < len(self.groups):
-            return self.groups[key]
-        return (key - len(self.groups),)
-
-    def _other_members_on(self, ac_id: int, *, planned_off: set[int]) -> bool:
-        members = self._members_for_key(self._group_key(ac_id))
-        return any(member != ac_id and member not in planned_off and self.ac_state.get(member) is True for member in members)
-
-
 class AdaptiveMpcEngine:
     def __init__(self) -> None:
         self.zone_models: dict[int, ZoneThermalModel] = {}
@@ -923,87 +840,18 @@ class AdaptiveMpcEngine:
         model.accelerated_learning = enabled
 
     def status(self, now: float) -> dict[str, Any]:
-        return {
-            "zones": {
-                str(group_id): {
-                    "learn": model.learn,
-                    "accelerated_learning": model.accelerated_learning,
-                    "learning_progress": model.learning_progress,
-                    "readiness_reason": model.readiness_reason,
-                    "cooling_readiness_reason": model.readiness_reason_for(cooling=True),
-                    "heating_readiness_reason": model.readiness_reason_for(cooling=False),
-                    "readiness_requirements": model._readiness_requirements(),
-                    "cooling_ready": model.cooling_ready,
-                    "heating_ready": model.heating_ready,
-                    "idle_observations": model.ekf.idle_samples,
-                    "cooling_observations": model.ekf.cooling_samples,
-                    "heating_observations": model.ekf.heating_samples,
-                    "skipped_observations": model.skipped_observations,
-                    "last_skip_reason": model.last_skip_reason,
-                    "last_boost_ts": model.last_boost_ts,
-                    "passive_hours": round(model.passive_samples * LEARNING_OBSERVATION_INTERVAL_SECONDS / 3600.0, 2),
-                    "active_hours": round(model.active_samples * LEARNING_OBSERVATION_INTERVAL_SECONDS / 3600.0, 2),
-                    "confidence": model.confidence,
-                    "mpc_ready": model.mpc_ready,
-                    "passive_samples": model.passive_samples,
-                    "active_samples": model.active_samples,
-                    "last_temperature": model.last_temperature,
-                    "last_ts": model.last_ts,
-                    "passive_drift_per_hour": round(model.passive_drift_per_hour, 3),
-                    "active_response_per_hour": round(model.active_response_per_hour, 3),
-                    "outside_coupling_per_hour": round(model.outside_coupling_per_hour, 4),
-                    "ekf_updates": model.ekf.updates,
-                    "idle_samples": model.ekf.idle_samples,
-                    "heating_samples": model.ekf.heating_samples,
-                    "cooling_samples": model.ekf.cooling_samples,
-                    "prediction_std": round(model.ekf.prediction_std(MODE_IDLE, model.ekf.x[0], model.ekf.x[0], PLAN_DT_MINUTES), 3),
-                    "alpha": round(model.ekf.x[1], 4),
-                    "beta_heat": round(model.ekf.x[2], 3),
-                    "beta_cool": round(model.ekf.x[3], 3),
-                    "beta_solar": round(model.ekf.x[4], 3),
-                    "beta_occupancy": round(model.ekf.x[5], 3),
-                    "covariance": {
-                        "temperature": round(model.ekf.p[0][0], 4),
-                        "alpha": round(model.ekf.p[1][1], 4),
-                        "heat": round(model.ekf.p[2][2], 4),
-                        "cool": round(model.ekf.p[3][3], 4),
-                        "solar": round(model.ekf.p[4][4], 4),
-                        "occupancy": round(model.ekf.p[5][5], 4),
-                    },
-                    "history_points": len(self.history.get(group_id, ())),
-                }
-                for group_id, model in sorted(self.zone_models.items())
-            },
-            "compressor": self.compressor.status(now),
-            "learning_paused_reason": self.learning_paused_reason,
-            "analytics": {
-                str(group_id): [_analytics_point(point) for point in list(points)[-24:]]
-                for group_id, points in sorted(self.history.items())
-            },
-            "forecasts": {
-                str(group_id): points
-                for group_id, points in sorted(self.forecasts.items())
-                if points
-            },
-            "plans": {
-                str(ac_id): {
-                    "target": plan.target,
-                    "source": plan.source,
-                    "confidence": plan.confidence,
-                    "action": plan.action,
-                    "power_fraction": plan.power_fraction,
-                    "projected_runtime_hours": plan.projected_runtime_hours,
-                    "zone_projected_runtime_hours": {
-                        str(group_id): hours
-                        for group_id, hours in plan.zone_projected_runtime_hours.items()
-                    },
-                    "predicted_temperatures": plan.predicted_temperatures,
-                    "reason": plan.reason,
-                    "runtime_forecast": _runtime_forecast_status(plan.runtime_forecast),
-                }
-                for ac_id, plan in sorted(self.last_plans.items())
-            },
-        }
+        return mpc_status(
+            zone_models=self.zone_models,
+            compressor=self.compressor,
+            history=self.history,
+            forecasts=self.forecasts,
+            last_plans=self.last_plans,
+            learning_paused_reason=self.learning_paused_reason,
+            now=now,
+            mode_idle=MODE_IDLE,
+            plan_dt_minutes=PLAN_DT_MINUTES,
+            learning_observation_interval_seconds=LEARNING_OBSERVATION_INTERVAL_SECONDS,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1061,36 +909,6 @@ class AdaptiveMpcEngine:
             points[-1] = point
             return
         points.append(point)
-
-
-def _analytics_point(point: dict[str, Any]) -> dict[str, Any]:
-    temperature = _number(point.get("temperature"))
-    if temperature is None:
-        temperature = _number(point.get("room_temp"))
-    outdoor_temperature = _number(point.get("outdoor_temperature"))
-    if outdoor_temperature is None:
-        outdoor_temperature = _number(point.get("outdoor_temp"))
-    result: dict[str, Any] = {
-        "ts": point.get("ts"),
-        "temperature": temperature,
-        "outdoor_temperature": outdoor_temperature,
-        "mode": point.get("mode"),
-        "source": point.get("source"),
-        "skipped": point.get("skipped") is True,
-        "skip_reason": point.get("skip_reason"),
-    }
-    q_solar = _number(point.get("q_solar"))
-    if q_solar is not None:
-        result["q_solar"] = q_solar
-    estimated_power_fraction = _number(point.get("estimated_power_fraction"))
-    if estimated_power_fraction is not None:
-        result["estimated_power_fraction"] = estimated_power_fraction
-    predicted = _number(point.get("predicted_temperature"))
-    if predicted is None:
-        predicted = _number(point.get("prediction"))
-    if predicted is not None:
-        result["predicted_temperature"] = predicted
-    return result
 
 
 def _forecast_points(plan: MpcPlan, outdoor: list[float]) -> list[dict[str, Any]]:
@@ -1256,29 +1074,6 @@ def _annotate_solve_diagnostics(
         "input_forecast_points": input_forecast_points,
         "solver_status": "ok",
     })
-
-
-def _runtime_forecast_status(forecast: RuntimeForecast | None) -> dict[str, Any] | None:
-    if forecast is None:
-        return None
-    return {
-        "horizon_hours": forecast.horizon_hours,
-        "step_minutes": forecast.step_minutes,
-        "runtime_minutes": forecast.runtime_minutes,
-        "runtime_hours": round(forecast.runtime_minutes / 60.0, 2),
-        "runtime_fraction": forecast.runtime_fraction,
-        "zone_runtime_minutes": {
-            str(group_id): minutes
-            for group_id, minutes in forecast.zone_runtime_minutes.items()
-        },
-        "zone_runtime_fraction": {
-            str(group_id): fraction
-            for group_id, fraction in forecast.zone_runtime_fraction.items()
-        },
-        "action_windows": forecast.action_windows,
-        "series": forecast.series,
-        "quality": forecast.quality,
-    }
 
 
 def _optimize_plan(

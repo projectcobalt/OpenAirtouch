@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .adaptive_model import AdaptiveDevice, AdaptiveRoom, AdaptiveSnapshot
+from .adaptive_runtime_state import _ac_name, _groups_for_ac, _iter_acs, _number
 
 
 def translate_airtouch_snapshot(
@@ -117,49 +118,3 @@ def _group_weight(status: dict[str, Any]) -> float | None:
                 value /= 100.0
             return min(1.0, max(0.0, value))
     return None
-
-
-def _iter_acs(state: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
-    result = []
-    for key, value in (state.get("acs") or {}).items():
-        try:
-            ac_id = int(key)
-        except (TypeError, ValueError):
-            continue
-        if isinstance(value, dict):
-            result.append((ac_id, value))
-    return sorted(result)
-
-
-def _groups_for_ac(state: dict[str, Any], ac_id: int, ac: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
-    base = ac.get("base") or {}
-    groups = state.get("active_groups") or state.get("groups") or {}
-    start = base.get("group_start")
-    count = base.get("group_count")
-    result = []
-    for key, value in groups.items():
-        try:
-            group_id = int(key)
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(value, dict):
-            continue
-        if isinstance(start, int) and isinstance(count, int) and not (start <= group_id < start + count):
-            continue
-        result.append((group_id, value))
-    return sorted(result)
-
-
-def _number(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if number == number else None
-
-
-def _ac_name(ac_id: int, ac: dict[str, Any]) -> str:
-    base = ac.get("base") or {}
-    return str(base.get("name") or f"AC {ac_id + 1}")

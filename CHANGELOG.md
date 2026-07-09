@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Split adaptive controller configuration, evaluation, persisted state, runtime-state helpers, MPC compressor tracking, and MPC status projection into focused modules.
+- Retarget adaptive tests to public learning import/status APIs instead of reaching into controller MPC internals.
 - Add a protocol profile boundary so runtime and command handling can delegate AirTouch-specific behavior while keeping higher service layers OpenAirTouch-oriented.
 - Split the service controller into focused command queue, event log, config store, transport factory, runtime host, and runtime integration loop modules.
 - Split the service API factory from static UI asset handling, HTTP routes, and WebSocket event streaming.

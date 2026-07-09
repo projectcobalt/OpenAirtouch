@@ -5,8 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from ..session.queue import TransactionSpec
+from .adaptive_config import strategy_uses_mpc
 from .adaptive_intent import _mode_intent_status, _proposal_status, _title_text
 from .adaptive_model import AdaptiveDevice
+from .adaptive_runtime_state import (
+    _ac_name,
+    _clamp_setpoint,
+    _cooling_for_mode,
+    _group_name,
+    _groups_for_ac,
+    _has_active_zone_for_ac,
+    _number,
+)
 from .adaptive_signals import (
     AcTelemetrySignal,
     ClimateSignal,
@@ -44,7 +54,7 @@ class AdaptiveStrategyMixin:
         target: int | None = None
         forecast_target: int | None = None
         proposal = None
-        if _strategy_uses_mpc(self.config.control_strategy) and mode_intent.mode in (1, 4):
+        if strategy_uses_mpc(self.config.control_strategy) and mode_intent.mode in (1, 4):
             target = self._control_target(device, ac, outside, weather, climate, cooling)
             proposal = self._mpc_proposal(device, target, cooling, outside, weather, solar, telemetry, climate, advisory=True)
         hybrid_status = None
@@ -573,14 +583,6 @@ def _fraction_to_percent(value: float) -> int:
 
 def _percent_to_fraction(value: int) -> float:
     return _clamp_int(value, 0, 100) / 100.0
-
-
-
-
-def _strategy_uses_mpc(control_strategy: str) -> bool:
-    return control_strategy in {"zone", "hybrid"}
-
-
 def _learning_recommendation(proposal: Any) -> str:
     action = _proposal_learning_action(proposal)
     if action == "cooling":
@@ -601,83 +603,3 @@ def _proposal_learning_action(proposal: Any) -> str | None:
             return action
     action = getattr(proposal, "action", None)
     return action if isinstance(action, str) and action else None
-
-
-def _clamp_setpoint(target: int, ac: dict[str, Any]) -> int:
-    settings = ac.get("settings") or {}
-    minimum = _number(settings.get("min_setpoint"))
-    maximum = _number(settings.get("max_setpoint"))
-    if minimum is not None:
-        target = max(target, int(minimum))
-    if maximum is not None:
-        target = min(target, int(maximum))
-    return target
-
-
-def _cooling_for_mode(mode: int | None, *, default: bool) -> bool:
-    if mode == 1:
-        return False
-    if mode == 4:
-        return True
-    return default
-
-
-def _groups_for_ac(state: dict[str, Any], ac_id: int, ac: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
-    base = ac.get("base") or {}
-    groups = state.get("active_groups") or state.get("groups") or {}
-    start = base.get("group_start")
-    count = base.get("group_count")
-    result = []
-    for key, value in groups.items():
-        try:
-            group_id = int(key)
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(value, dict):
-            continue
-        if isinstance(start, int) and isinstance(count, int) and not (start <= group_id < start + count):
-            continue
-        result.append((group_id, value))
-    return sorted(result)
-
-
-def _group_for_id(state: dict[str, Any], group_id: int) -> dict[str, Any]:
-    group = _indexed(state.get("active_groups") or {}, group_id)
-    if isinstance(group, dict):
-        return group
-    group = _indexed(state.get("groups") or {}, group_id)
-    return group if isinstance(group, dict) else {}
-
-
-def _has_active_zone_for_ac(state: dict[str, Any], ac_id: int, ac: dict[str, Any]) -> bool:
-    return any(
-        (group.get("status") or {}).get("power_name") in {"on", "turbo"}
-        for _group_id, group in _groups_for_ac(state, ac_id, ac)
-    )
-
-
-def _indexed(mapping: Any, key: int | None) -> Any:
-    if key is None:
-        return None
-    if not isinstance(mapping, dict):
-        return None
-    return mapping.get(key) if key in mapping else mapping.get(str(key))
-
-
-def _number(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _ac_name(ac_id: int, ac: dict[str, Any]) -> str:
-    base = ac.get("base") or {}
-    return str(base.get("name") or f"AC {ac_id + 1}")
-
-
-def _group_name(group_id: int, group: dict[str, Any]) -> str:
-    base = group.get("base") or {}
-    return str(base.get("name") or f"Zone {group_id + 1}")

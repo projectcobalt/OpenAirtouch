@@ -8,6 +8,7 @@ from datetime import datetime, timezone, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .adaptive_runtime_state import _groups_for_ac, _number
 
 TELEMETRY_ACTIVE_POWER_W = 300.0
 TELEMETRY_IDLE_POWER_W = 120.0
@@ -736,31 +737,3 @@ def _forecast_supports_weather_pause(forecast_temperatures: tuple[float, ...], s
     if cooling:
         return min(near_term) <= setpoint
     return max(near_term) >= setpoint
-
-
-
-
-def _groups_for_ac(state: dict[str, Any], ac_id: int, ac: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
-    base = ac.get("base") or {}
-    groups = state.get("active_groups") or state.get("groups") or {}
-    start = base.get("group_start")
-    count = base.get("group_count")
-    result = []
-    for key, value in groups.items():
-        try:
-            group_id = int(key)
-        except (TypeError, ValueError):
-            continue
-        if not isinstance(value, dict):
-            continue
-        if isinstance(start, int) and isinstance(count, int) and not (start <= group_id < start + count):
-            continue
-        result.append((group_id, value))
-    return sorted(result)
-
-
-def _number(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

@@ -31,6 +31,14 @@ def ready_heating_model() -> ZoneThermalModel:
     return model
 
 
+def seed_learning_model(controller: AdaptiveController, zone: int, model: ZoneThermalModel) -> None:
+    controller.import_learning({"zones": {str(zone): model.to_dict()}})
+
+
+def learning_zone(controller: AdaptiveController, zone: int, *, now: float = 1.0) -> dict:
+    return controller.learning_status(now=now)["zones"][str(zone)]
+
+
 def runtime_state(
     *,
     ac_setpoint: int = 22,
@@ -401,9 +409,9 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_status_exposes_mode_specific_mpc_readiness(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
-        zone = controller._mpc.status(now=1.0)["zones"]["0"]
+        zone = learning_zone(controller, 0)
 
         self.assertTrue(zone["cooling_ready"])
         self.assertFalse(zone["heating_ready"])
@@ -415,7 +423,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19),
@@ -433,7 +441,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="recommend", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=19),
@@ -482,7 +490,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 control_zones=(0,),
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=24, zone_setpoint=22, zone_temperature=25),
@@ -510,7 +518,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25),
@@ -541,7 +549,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 control_strategy="hybrid",
             )
         )
-        controller._mpc.zone_models[0] = ZoneThermalModel(passive_samples=3, active_samples=2, learn=True)
+        seed_learning_model(controller, 0, ZoneThermalModel(passive_samples=3, active_samples=2, learn=True))
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25),
@@ -568,7 +576,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=20, mode=1, zone_temperature=23),
@@ -595,7 +603,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=20, mode=1, zone_temperature=25),
@@ -623,7 +631,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=24, zone_setpoint=24, mode=4, zone_temperature=21),
@@ -650,7 +658,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=24, zone_setpoint=24, mode=4, zone_temperature=19),
@@ -678,7 +686,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=20, mode=1, zone_temperature=25),
@@ -702,7 +710,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 cool_comfort_temp=24,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=24, zone_setpoint=24, mode=4, zone_temperature=19),
@@ -723,7 +731,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 control_strategy="hybrid",
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=22, sensor_control=False, zone_percentage=25),
@@ -750,7 +758,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 control_strategy="hybrid",
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=22, sensor_control=False, zone_percentage=25),
@@ -781,7 +789,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25, sensor_control=False, zone_percentage=25),
@@ -804,7 +812,7 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_recommend_mode_does_not_report_mpc_without_configured_control_zone(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="recommend", control_strategy="zone", command_cooldown=1))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=19),
@@ -817,7 +825,7 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_control_mode_does_not_assert_without_zone_control_flag(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False),
@@ -833,7 +841,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False),
@@ -856,7 +864,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         specs = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25),
@@ -889,7 +897,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         first = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25),
@@ -922,7 +930,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=False, zone_percentage=25, ctrl_thermostat=0),
@@ -956,7 +964,7 @@ class AdaptiveControllerTests(unittest.TestCase):
                 hybrid_idle_damper_percent=10,
             )
         )
-        controller._mpc.zone_models[0] = ready_heating_model()
+        seed_learning_model(controller, 0, ready_heating_model())
 
         first = controller.evaluate(
             runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19, sensor_control=True, zone_percentage=25),
@@ -1051,7 +1059,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ZoneThermalModel(passive_samples=3, active_samples=2, learn=True)
+        seed_learning_model(controller, 0, ZoneThermalModel(passive_samples=3, active_samples=2, learn=True))
         controller.manage_learning({"action": "accelerate_zone", "zone": 0, "enabled": True})
 
         specs = controller.evaluate(
@@ -1082,9 +1090,9 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_learning_status_hours_match_three_minute_observations(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1))
-        controller._mpc.zone_models[0] = ZoneThermalModel(passive_samples=60, active_samples=20)
+        seed_learning_model(controller, 0, ZoneThermalModel(passive_samples=60, active_samples=20))
 
-        zone = controller._mpc.status(now=1.0)["zones"]["0"]
+        zone = learning_zone(controller, 0)
 
         self.assertEqual(zone["passive_hours"], 3.0)
         self.assertEqual(zone["active_hours"], 1.0)
@@ -1121,7 +1129,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(
             AdaptiveConfig(mode="adaptive", control_strategy="zone", command_cooldown=1, control_zones=(0,))
         )
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25),
@@ -1283,7 +1291,7 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_runtime_forecast_is_exposed_in_adaptive_status(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="recommend", control_strategy="zone", control_zones=(0,)))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25),
@@ -1304,7 +1312,7 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_ac_telemetry_is_exposed_as_forecast_confidence_evidence(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="recommend", control_strategy="zone", control_zones=(0,)))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
         controller.evaluate(
             runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25),
@@ -1728,9 +1736,9 @@ class AdaptiveControllerTests(unittest.TestCase):
 
     def test_mode_specific_readiness_reason_names_missing_mode_samples(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", command_cooldown=1))
-        controller._mpc.zone_models[0] = ready_model()
+        seed_learning_model(controller, 0, ready_model())
 
-        zone = controller._mpc.status(now=1.0)["zones"]["0"]
+        zone = learning_zone(controller, 0)
 
         self.assertEqual(zone["heating_readiness_reason"], "heating_samples")
         self.assertEqual(zone["cooling_readiness_reason"], "ready")
