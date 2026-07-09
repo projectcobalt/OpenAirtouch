@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.7 - 2026-07-09
+
 - Split adaptive controller configuration, evaluation, persisted state, runtime-state helpers, MPC compressor tracking, and MPC status projection into focused modules.
 - Retarget adaptive tests to public learning import/status APIs instead of reaching into controller MPC internals.
 - Add a protocol profile boundary so runtime and command handling can delegate AirTouch-specific behavior while keeping higher service layers OpenAirTouch-oriented.
