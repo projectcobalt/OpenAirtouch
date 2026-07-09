@@ -1,4 +1,4 @@
-"""Runtime loop for the AirTouch replacement-touchscreen host."""
+"""Runtime loop for the OpenAirTouch replacement-touchscreen host."""
 
 from __future__ import annotations
 
@@ -6,13 +6,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol
 
-from ..constants import ADDR_TOUCHPAD_1
 from ..packet import AirTouchPacket
-from ..payloads import decode_packet_payload
-from ..profiles import AT4, ProtocolProfile, get_profile
+from ..protocols import AT4, ProtocolProfile, ProtocolSession, ProtocolState, get_profile
 from ..session.queue import TransactionEvent, TransactionQueue, TransactionSpec
-from ..session.touchscreen import TouchscreenSession
-from ..state import AirTouchState
 
 
 class TransportLike(Protocol):
@@ -27,7 +23,7 @@ class TransportLike(Protocol):
 
 @dataclass(frozen=True)
 class RuntimeConfig:
-    """Configuration for a live AirTouch touchscreen host session."""
+    """Configuration for a live OpenAirTouch touchscreen host session."""
 
     active: bool = True
     detect_seconds: float = 3.0
@@ -57,7 +53,7 @@ class RuntimeEvent:
 
 @dataclass
 class AirTouchRuntime:
-    """Stateful protocol runtime for replacing the AirTouch touchscreen.
+    """Stateful protocol runtime for replacing the OpenAirTouch touchscreen.
 
     This class is the boundary between the packet/parser layer and application
     surfaces such as a terminal dashboard, HTTP API, or Home Assistant ingress
@@ -67,10 +63,10 @@ class AirTouchRuntime:
 
     transport: TransportLike
     config: RuntimeConfig = field(default_factory=RuntimeConfig)
-    session: TouchscreenSession | None = None
+    session: ProtocolSession | None = None
     transactions: TransactionQueue | None = None
     profile: ProtocolProfile | None = None
-    state: AirTouchState = field(default_factory=AirTouchState)
+    state: ProtocolState | None = None
     rx_count: int = 0
     tx_count: int = 0
     started_monotonic: float = field(default_factory=time.monotonic)
@@ -84,10 +80,12 @@ class AirTouchRuntime:
         if self.profile is None:
             self.profile = get_profile("auto")
         if self.session is None:
-            self.session = TouchscreenSession(
+            self.session = self._profile.create_session(
                 touchpad_temperature=self.config.touchpad_temperature,
                 heartbeat_interval=self.config.heartbeat_interval,
             )
+        if self.state is None:
+            self.state = self._profile.create_state()
         if self.transactions is None and self.config.active and self.config.init_transactions:
             self.transactions = TransactionQueue()
             self.transactions.enqueue_many(self._profile.init_transactions())
@@ -193,14 +191,20 @@ class AirTouchRuntime:
                 "uptime_seconds": int(time.monotonic() - self.started_monotonic),
             },
             "transactions": transactions,
-            "state": self.state.snapshot(),
+            "state": self._state.snapshot(),
         }
 
     @property
-    def _session(self) -> TouchscreenSession:
+    def _session(self) -> ProtocolSession:
         if self.session is None:
             raise RuntimeError("runtime session is not initialised")
         return self.session
+
+    @property
+    def _state(self) -> ProtocolState:
+        if self.state is None:
+            raise RuntimeError("runtime state is not initialised")
+        return self.state
 
     def _read_available(self) -> list[RuntimeEvent]:
         data = self.transport.read()
@@ -210,15 +214,15 @@ class AirTouchRuntime:
         for packet in self._session.feed_rx(data):
             self.rx_count += 1
             detected = self._profile.detect_response(packet.command, packet.payload)
-            decoded = decode_packet_payload(packet, self._profile.decode_payload)
+            decoded = self._profile.decode_packet(packet)
             if detected is not None:
                 decoded = {**decoded, "detected_protocol": detected}
                 self._handle_detected_protocol(detected)
             state_changed = decoded.get("decoder") != "client_api"
             message = self._state_log_message(decoded) if state_changed else ""
             if state_changed:
-                self.state.apply_decoded(packet.command, decoded)
-                self.state.last_command = packet.command
+                self._state.apply_decoded(packet.command, decoded)
+                self._state.last_command = packet.command
                 self._queue_sensor_info_requests(decoded)
             events.append(RuntimeEvent("rx", packet=packet, message=message, decoded=decoded, state_changed=state_changed))
             if self.transactions is not None:
@@ -235,22 +239,12 @@ class AirTouchRuntime:
     def _tx_event(self, packet: AirTouchPacket, wire: bytes) -> RuntimeEvent:
         self._write(wire)
         decoded = self._profile.decode_payload(packet.command, packet.payload)
-        message = _control_log_message(decoded)
-        self.state.apply_decoded(packet.command, decoded)
+        message = self._profile.control_message(decoded)
+        self._state.apply_decoded(packet.command, decoded)
         return RuntimeEvent("tx", packet=packet, wire=wire, message=message, decoded=decoded, state_changed=True)
 
     def _state_log_message(self, decoded: dict) -> str:
-        messages: list[str] = []
-        kind = decoded.get("type")
-        if kind == "ac_status_internal":
-            for record in decoded.get("records", []):
-                if isinstance(record, dict):
-                    messages.extend(_ac_status_change_messages(self.state, record))
-        elif kind == "group_status_internal":
-            for record in decoded.get("records", []):
-                if isinstance(record, dict):
-                    messages.extend(_group_status_change_messages(self.state, record))
-        return "; ".join(messages)
+        return "; ".join(self._profile.state_messages(self._state, decoded))
 
     def _assign_address(self) -> int | None:
         return self._session.choose_available_address()
@@ -271,124 +265,6 @@ class AirTouchRuntime:
                 self.transactions = None
 
     def _queue_sensor_info_requests(self, decoded: dict) -> None:
-        if decoded.get("type") != "sensor_list":
-            return
-        addresses = decoded.get("sensor_addresses") or []
-        specs = []
-        for sensor in addresses:
-            if not isinstance(sensor, int) or sensor in self.sensor_info_requested:
-                continue
-            self.sensor_info_requested.add(sensor)
-            specs.append(TransactionSpec(
-                0x73,
-                bytes((sensor,)),
-                expected_commands=(0x73,),
-                name=f"sensor info 0x{sensor:02X}" if sensor >= 0x80 else f"sensor info {sensor}",
-                max_attempts=2,
-                timeout=2.0,
-            ))
+        specs = list(self._profile.sensor_info_requests(decoded, self.sensor_info_requested))
         if specs:
             self.enqueue(specs)
-
-
-def _control_log_message(decoded: dict) -> str:
-    kind = decoded.get("type")
-    if kind == "set_ac_status_internal":
-        parts = [f"[C]AC({_text(decoded.get('ac'))}) SET"]
-        power = decoded.get("power_name")
-        if power and power != "unchanged":
-            parts.append(f"Power: {_power_text(power)}")
-        if decoded.get("setpoint") is not None:
-            parts.append(f"SetPoint: {decoded.get('setpoint')}")
-        if decoded.get("mode") is not None:
-            parts.append(f"Mode: {_mode_text(decoded.get('mode'))}")
-        if decoded.get("fan") is not None:
-            parts.append(f"Fan: {_text(decoded.get('fan'))}")
-        return " ".join(parts) if len(parts) > 1 else ""
-    if kind == "set_group_status_internal":
-        parts = [f"[C]Group({_text(decoded.get('group'))}) SET"]
-        power = decoded.get("power_name")
-        if power and power != "value_change":
-            parts.append(f"Power: {_power_text(power)}")
-        if decoded.get("sensor_control"):
-            parts.append(f"SetPoint: {_text(decoded.get('setpoint'))}")
-        elif decoded.get("percentage") is not None:
-            parts.append(f"Open: {_text(decoded.get('percentage'))}")
-        return " ".join(parts) if len(parts) > 1 else ""
-    if kind == "group_control_client":
-        parts = [f"[C]Group({_text(decoded.get('group'))}) SET"]
-        power = decoded.get("power_name")
-        if power and power != "unchanged":
-            parts.append(f"Power: {_power_text(power)}")
-        setting = decoded.get("setting") if isinstance(decoded.get("setting"), dict) else {}
-        if setting.get("setpoint") is not None:
-            parts.append(f"SetPoint: {setting.get('setpoint')}")
-        if setting.get("damper_percentage") is not None:
-            parts.append(f"Open: {setting.get('damper_percentage')}")
-        return " ".join(parts) if len(parts) > 1 else ""
-    if kind == "ac_control_client":
-        parts = [f"[C]AC({_text(decoded.get('ac'))}) SET"]
-        power = decoded.get("power_name")
-        if power and power != "unchanged":
-            parts.append(f"Power: {_power_text(power)}")
-        if decoded.get("setpoint") is not None:
-            parts.append(f"SetPoint: {decoded.get('setpoint')}")
-        if decoded.get("mode") is not None:
-            parts.append(f"Mode: {_mode_text(decoded.get('mode'))}")
-        if decoded.get("fan") is not None:
-            parts.append(f"Fan: {_text(decoded.get('fan'))}")
-        return " ".join(parts) if len(parts) > 1 else ""
-    return ""
-
-
-def _ac_status_change_messages(state: AirTouchState, record: dict) -> list[str]:
-    ac = record.get("ac")
-    previous = state.acs.get(ac, {}).get("status", {}) if isinstance(ac, int) else {}
-    messages = []
-    messages.extend(_change_message(f"[M]AC({_text(ac)}) Power", previous.get("power_on"), record.get("power_on"), _on_off))
-    messages.extend(_change_message(f"[M]AC({_text(ac)}) Mode", previous.get("mode"), record.get("mode"), _mode_text))
-    messages.extend(_change_message(f"[M]AC({_text(ac)}) Fan", previous.get("fan"), record.get("fan"), _text))
-    messages.extend(_change_message(f"[M]AC({_text(ac)}) SetPoint", previous.get("setpoint"), record.get("setpoint"), _text))
-    messages.extend(_change_message(f"[M]AC({_text(ac)}) Error", previous.get("error_code"), record.get("error_code"), _text))
-    return messages
-
-
-def _group_status_change_messages(state: AirTouchState, record: dict) -> list[str]:
-    group = record.get("group")
-    previous = state.groups.get(group, {}).get("status", {}) if isinstance(group, int) else {}
-    messages = []
-    messages.extend(_change_message(f"[M]Group({_text(group)}) Power", previous.get("power_name"), record.get("power_name"), _power_text))
-    messages.extend(_change_message(f"[M]Group({_text(group)}) Open", previous.get("percentage"), record.get("percentage"), _text))
-    messages.extend(_change_message(f"[M]Group({_text(group)}) SetPoint", previous.get("setpoint"), record.get("setpoint"), _text))
-    messages.extend(_change_message(f"[M]Group({_text(group)}) Temp", previous.get("temperature"), record.get("temperature"), _text))
-    messages.extend(_change_message(f"[M]Group({_text(group)}) Spill", previous.get("spill_on"), record.get("spill_on"), _on_off))
-    return messages
-
-
-def _change_message(label: str, old: object, new: object, formatter) -> list[str]:
-    if old is None or new is None or old == new:
-        return []
-    return [f"{label}: {formatter(old)}->{formatter(new)}"]
-
-
-def _mode_text(value: object) -> str:
-    names = {0: "Auto", 1: "Heat", 2: "Dry", 3: "Fan", 4: "Cool"}
-    try:
-        return names.get(int(value), str(value))
-    except (TypeError, ValueError):
-        return str(value)
-
-
-def _power_text(value: object) -> str:
-    text = str(value).replace("_", " ").strip()
-    if text.lower() in {"on", "off", "turbo"}:
-        return text.upper() if text.lower() in {"on", "off"} else "Turbo"
-    return text[:1].upper() + text[1:]
-
-
-def _on_off(value: object) -> str:
-    return "ON" if bool(value) else "OFF"
-
-
-def _text(value: object) -> str:
-    return "-" if value is None else str(value)
