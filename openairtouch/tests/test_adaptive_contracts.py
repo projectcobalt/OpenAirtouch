@@ -128,13 +128,15 @@ class AdaptiveContractTests(unittest.TestCase):
         self.assertEqual(contract["metrics"][2]["label"], "Control Temperature")
         self.assertEqual(contract["metrics"][2]["raw"], 19.0)
         self.assertEqual(contract["metrics"][3]["value"], "2 active changes")
-        self.assertEqual(contract["analytics"]["zones"][0]["id"], 0)
-        self.assertEqual(contract["analytics"]["zones"][0]["state"], "Ready")
-        self.assertEqual(contract["analytics"]["zones"][0]["flags"], ["Control", "Damper", "Ready", "Learning"])
-        self.assertEqual(contract["analytics"]["zones"][0]["badges"][0]["value"], "50%")
-        self.assertEqual(contract["analytics"]["zones"][0]["badges"][1]["value"], "12/3")
-        self.assertTrue(contract["analytics"]["zones"][0]["series"]["has_data"])
-        self.assertEqual(contract["analytics"]["zones"][0]["series"]["label"], "19.5 C -> 21 C")
+        self.assertEqual(contract["analytics"]["cards"][0]["id"], 0)
+        self.assertEqual(contract["analytics"]["cards"][0]["state"], "Ready")
+        self.assertEqual(contract["analytics"]["cards"][0]["flags"], ["Control", "Damper", "Ready", "Learning"])
+        self.assertEqual(contract["analytics"]["cards"][0]["badges"][0]["value"], "50%")
+        self.assertEqual(contract["analytics"]["cards"][0]["badges"][1]["value"], "12/3")
+        self.assertEqual(contract["analytics"]["cards"][0]["chart"]["variant"], "hybrid")
+        self.assertEqual(contract["analytics"]["cards"][0]["chart"]["title"], "Hybrid Plan")
+        self.assertTrue(contract["analytics"]["cards"][0]["chart"]["has_data"])
+        self.assertEqual(contract["analytics"]["cards"][0]["chart"]["lines"][0]["key"], "room")
         self.assertEqual(contract["plan"]["target"], 22.0)
         self.assertEqual(contract["plan"]["control_temperature"], 19.0)
         self.assertEqual(contract["plan"]["damper_percentages"], {"0": 100})
@@ -155,7 +157,8 @@ class AdaptiveContractTests(unittest.TestCase):
         self.assertEqual(ui["summary"]["headline"], "Heating Expected")
         self.assertEqual(ui["surfaces"]["zone"]["fields"][0]["label"], "Target")
         self.assertEqual(ui["metrics"][2]["label"], "Control Temperature")
-        self.assertEqual(ui["analytics"]["zones"][0]["state"], "Ready")
+        self.assertEqual(ui["analytics"]["cards"][0]["state"], "Ready")
+        self.assertEqual(ui["analytics"]["cards"][0]["chart"]["variant"], "zone")
         self.assertEqual(ui["plan"]["target"], 22.0)
 
     def test_controller_status_includes_off_ui_contract(self) -> None:
@@ -190,6 +193,27 @@ class AdaptiveContractTests(unittest.TestCase):
         self.assertEqual(ui["surfaces"]["environment"]["fields"][0]["value"], "-")
         self.assertEqual(ui["metrics"][1]["value"], "0 ready / 0 learning")
 
+    def test_outside_temperature_skip_reason_does_not_replace_zone_state(self) -> None:
+        contract = build_adaptive_ui_contract(
+            {
+                "mode": "adaptive",
+                "config": {"control_strategy": "zone"},
+                "note": "Outside temperature is not available",
+                "outside_temperature": None,
+                "learning": {
+                    "zones": {
+                        "0": {
+                            "learn": True,
+                            "last_skip_reason": "outside_temperature_unavailable",
+                        }
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(contract["summary"]["headline"], "Outside temperature is not available")
+        self.assertEqual(contract["analytics"]["cards"][0]["state"], "Learning")
+
     def test_controller_status_includes_weather_ui_contract(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="weather", command_cooldown=1))
 
@@ -198,6 +222,7 @@ class AdaptiveContractTests(unittest.TestCase):
         ui = controller.status()["ui"]
         self.assertEqual(ui["summary"]["intent"], "turn_off")
         self.assertEqual(ui["surfaces"]["environment"]["fields"][0]["raw"], 20.0)
+        self.assertEqual(ui["analytics"]["cards"][0]["chart"]["variant"], "environment")
         self.assertEqual(ui["commands"]["command_intents"][0]["intent"], "set_ac_power")
         self.assertEqual(ui["commands"]["command_intents"][0]["transaction"]["action"], "ac_status")
 
@@ -223,6 +248,7 @@ class AdaptiveContractTests(unittest.TestCase):
         ui = controller.status()["ui"]
         self.assertEqual(ui["surfaces"]["hybrid"]["fields"][0]["label"], "Control Temperature")
         self.assertEqual(ui["metrics"][2]["raw"], 19.0)
+        self.assertEqual(ui["analytics"]["cards"][0]["chart"]["variant"], "hybrid")
         self.assertEqual(ui["plan"]["control_temperature"], 19.0)
         self.assertEqual(ui["plan"]["damper_percentages"], {"0": 100})
 

@@ -20,17 +20,24 @@ const validContract = () => ({
   },
   metrics: [{label: "Authority", value: "Control"}],
   analytics: {
-    zones: [
+    cards: [
       {
         id: 0,
+        kind: "zone",
+        title: "Zone 1",
         state: "Ready",
         flags: ["Ready"],
         badges: [{label: "Progress", value: "100%"}],
-        series: {
-          history: [],
-          forecast: [],
-          label: "No chart data",
-          meta: "History / Now / Forecast"
+        chart: {
+          variant: "zone",
+          title: "Zone Plan",
+          summary: "No plan",
+          unit: "C",
+          lines: [],
+          bands: [],
+          windows: [],
+          has_data: false,
+          empty_reason: "No chart data"
         }
       }
     ]
@@ -56,13 +63,14 @@ test("validateAdaptiveUiContract reports missing status and analytics fields lou
   delete contract.summary.headline;
   delete contract.surfaces.hybrid;
   contract.metrics = [];
-  delete contract.analytics.zones[0].series.forecast;
+  delete contract.analytics.cards[0].chart.lines;
 
   assert.deepEqual(validateAdaptiveUiContract(contract), [
     "adaptive.ui.summary.headline is missing",
     "adaptive.ui.surfaces.hybrid is missing",
     "adaptive.ui.metrics must be a non-empty array",
-    "adaptive.ui.analytics.zones[0].series.forecast must be an array"
+    "adaptive.ui.analytics.cards[0].chart.lines is missing",
+    "adaptive.ui.analytics.cards[0].chart.lines must be an array"
   ]);
   assert.equal(isAdaptiveUiReady(contract), false);
 });

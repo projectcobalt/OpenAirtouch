@@ -20,46 +20,56 @@
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
   };
-  const pointValue = (point, keys) => {
-    if (typeof point === "number") return keys.includes("actual") || keys.includes("forecast") ? finite(point) : null;
-    if (!point || typeof point !== "object") return null;
-    for (const key of keys) {
-      const value = finite(point[key]);
-      if (value !== null) return value;
-    }
-    return null;
-  };
-  const chartEntries = (items = [], keys, limit = 96) => (Array.isArray(items) ? items : [])
-    .map((point, index) => ({x: finite(point?.ts) ?? index, value: pointValue(point, keys)}))
-    .filter((point) => point.value !== null)
-    .slice(-limit);
-  const chartPath = (entries, domain, offset = 0, total = entries.length) => {
-    if (entries.length < 2) return "";
-    const [min, max] = domain;
-    const spread = Math.max(1, max - min);
-    return entries.map((entry, index) => {
-      const x = ((index + offset) / Math.max(1, total - 1)) * 160;
-      const y = 40 - (((entry.value - min) / spread) * 32);
-      return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(" ");
-  };
-  function adaptiveSparklineData(history = [], forecast = []) {
-    const actual = chartEntries(history, ["temperature", "room_temperature", "actual", "value"], 48);
-    const inferredForecast = chartEntries(history, ["prediction", "predicted_temperature", "predicted"], 48);
-    const future = chartEntries(forecast, ["prediction", "predicted_temperature", "predicted", "temperature", "value"], 96);
-    const forecastEntries = future.length ? future : inferredForecast.map((point) => ({...point}));
-    const values = [...actual, ...forecastEntries].map((point) => point.value);
-    if (values.length < 2) {
-      return {hasData: false, actualPath: "", forecastPath: ""};
-    }
-    const domain = [Math.min(...values), Math.max(...values)];
-    const total = actual.length + forecastEntries.length;
-    const actualPath = chartPath(actual, domain, 0, total);
-    const forecastPath = chartPath(forecastEntries, domain, Math.max(0, actual.length - 1), total);
+  const lineClass = (kind = "") => `chart-line chart-line-${kind || "actual"}`;
+  const chartValues = (chart = {}) => [
+    ...(Array.isArray(chart.lines) ? chart.lines.flatMap((line) => (line.points || []).map((point) => finite(point.y)).filter((value) => value !== null)) : []),
+    ...(Array.isArray(chart.bands) ? chart.bands.flatMap((band) => [finite(band.min), finite(band.max)]).filter((value) => value !== null) : [])
+  ];
+  const chartXs = (chart = {}) => [
+    ...(Array.isArray(chart.lines) ? chart.lines.flatMap((line) => (line.points || []).map((point) => finite(point.x)).filter((value) => value !== null)) : []),
+    ...(Array.isArray(chart.windows) ? chart.windows.flatMap((window) => [finite(window.start), finite(window.end)]).filter((value) => value !== null) : [])
+  ];
+  function analyticsChartData(chart = {}) {
+    const values = chartValues(chart);
+    const xs = chartXs(chart);
+    const minY = values.length ? Math.min(...values) : 0;
+    const maxY = values.length ? Math.max(...values) : 1;
+    const pad = Math.max(0.5, (maxY - minY) * 0.18);
+    const y0 = minY - pad;
+    const y1 = maxY + pad;
+    const minX = xs.length ? Math.min(...xs) : 0;
+    const maxX = xs.length ? Math.max(...xs) : 1;
+    const yScale = (value) => 40 - (((value - y0) / Math.max(1, y1 - y0)) * 32);
+    const xScale = (value) => ((value - minX) / Math.max(1, maxX - minX)) * 160;
+    const linePaths = (Array.isArray(chart.lines) ? chart.lines : []).map((line) => ({
+      ...line,
+      path: (line.points || [])
+        .map((point, index) => {
+          const x = finite(point.x);
+          const y = finite(point.y);
+          if (x === null || y === null) return "";
+          return `${index ? "L" : "M"}${xScale(x).toFixed(1)} ${yScale(y).toFixed(1)}`;
+        })
+        .filter(Boolean)
+        .join(" ")
+    })).filter((line) => line.path);
+    const bands = (Array.isArray(chart.bands) ? chart.bands : []).map((band) => {
+      const top = yScale(finite(band.max) ?? finite(band.min) ?? 0);
+      const bottom = yScale(finite(band.min) ?? finite(band.max) ?? 0);
+      return {...band, y: Math.min(top, bottom), height: Math.max(1, Math.abs(bottom - top))};
+    });
+    const windows = (Array.isArray(chart.windows) ? chart.windows : []).map((window) => {
+      const start = xScale(finite(window.start) ?? minX);
+      const end = xScale(finite(window.end) ?? minX);
+      return {...window, x: Math.min(start, end), width: Math.max(1, Math.abs(end - start))};
+    });
     return {
-      hasData: !!(actualPath || forecastPath),
-      actualPath,
-      forecastPath
+      title: chart.title || "Analytics",
+      summary: chart.summary || chart.empty_reason || "No chart data",
+      hasData: chart.has_data === true && linePaths.length > 0,
+      linePaths,
+      bands,
+      windows
     };
   }
   const surfaceActive = (label, strategy) => (
@@ -81,7 +91,7 @@
     ["Hybrid", uiSurfaces.hybrid]
   ];
   $: statusItems = Array.isArray(adaptiveUi.metrics) ? adaptiveUi.metrics : [];
-  $: analyticsZones = Array.isArray(adaptiveUi.analytics?.zones) ? adaptiveUi.analytics.zones : [];
+  $: analyticsCards = Array.isArray(adaptiveUi.analytics?.cards) ? adaptiveUi.analytics.cards : [];
 </script>
 
 <section class="cards-view">
@@ -209,17 +219,17 @@
       </div>
     {:else}
       <div class="analytics-list">
-      {#each analyticsZones as zone}
-        {@const id = zone.id}
-        {@const sparkline = adaptiveSparklineData(zone.series.history, zone.series.forecast)}
-        <article class="summary-card analytics-row" class:ready={zone.ready} class:learning={zone.learning}>
+      {#each analyticsCards as card}
+        {@const zoneId = card.zone_id}
+        {@const chart = analyticsChartData(card.chart)}
+        <article class="summary-card analytics-row" class:ready={card.ready} class:learning={card.learning} data-analytics-kind={card.kind}>
           <div class="analytics-row-status">
             <div>
-              <div class="card-title">{zoneName(id)}</div>
-              <div class="hero-detail">{zone.state}</div>
+              <div class="card-title">{card.title || (zoneId === undefined || zoneId === null ? "Analytics" : zoneName(zoneId))}</div>
+              <div class="hero-detail">{card.state}</div>
             </div>
             <div class="pill-row-inline">
-              {#each zone.flags as flag}
+              {#each card.flags as flag}
                 <span>{flag}</span>
               {/each}
             </div>
@@ -227,21 +237,29 @@
           <div class="analytics-sparkline">
             <svg class="temp-line" viewBox="0 0 160 44" preserveAspectRatio="none" aria-hidden="true">
               <line class="axis" x1="0" y1="28" x2="160" y2="28"></line>
-              <line class="now-line" x1="62" y1="4" x2="62" y2="40"></line>
-              {#if sparkline.actualPath}<path d={sparkline.actualPath}></path>{/if}
-              {#if sparkline.forecastPath}<path class="prediction-line" d={sparkline.forecastPath}></path>{/if}
+              {#each chart.bands as band}
+                <rect class="chart-band" x="0" y={band.y} width="160" height={band.height}></rect>
+              {/each}
+              {#each chart.windows as window}
+                <rect class="chart-window" x={window.x} y="5" width={window.width} height="35"></rect>
+              {/each}
+              {#each chart.linePaths as line}
+                <path class={lineClass(line.kind)} d={line.path}></path>
+              {/each}
             </svg>
-            <div class="analytics-sparkline-meta"><span>{zone.series.meta}</span><span>{sparkline.hasData ? zone.series.label : "No chart data"}</span></div>
+            <div class="analytics-sparkline-meta"><span>{chart.title}</span><span>{chart.hasData ? chart.summary : "No chart data"}</span></div>
           </div>
           <div class="model-badge-grid">
-            {#each zone.badges.slice(0, 6) as badge}
+            {#each card.badges.slice(0, 6) as badge}
               <span class="model-badge"><b>{badge.label}</b>{badge.value}</span>
             {/each}
           </div>
-          <div class="service-actions">
-            <button type="button" disabled={pendingKey === `adaptive-model-accelerate_zone-${id}`} on:click={() => onModelAction("accelerate_zone", Number(id))}>{zone.accelerated_learning ? "Normal" : "Fast"}</button>
-            <button type="button" class="action-danger" disabled={pendingKey === `adaptive-model-reset_zone-${id}`} on:click={() => onModelAction("reset_zone", Number(id))}>Reset</button>
-          </div>
+          {#if zoneId !== undefined && zoneId !== null}
+            <div class="service-actions">
+              <button type="button" disabled={pendingKey === `adaptive-model-accelerate_zone-${zoneId}`} on:click={() => onModelAction("accelerate_zone", Number(zoneId))}>{card.accelerated_learning ? "Normal" : "Fast"}</button>
+              <button type="button" class="action-danger" disabled={pendingKey === `adaptive-model-reset_zone-${zoneId}`} on:click={() => onModelAction("reset_zone", Number(zoneId))}>Reset</button>
+            </div>
+          {/if}
         </article>
       {/each}
     </div>

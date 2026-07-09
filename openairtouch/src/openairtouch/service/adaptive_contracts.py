@@ -99,7 +99,7 @@ def build_adaptive_ui_contract(status: dict[str, Any]) -> dict[str, Any]:
     plan = _plan(evaluation, intent)
     inputs = _inputs(status, evaluation)
     commands = _commands(status, intent)
-    analytics = _analytics(status, commands)
+    analytics = _analytics(status, commands, evaluation, strategy)
     return {
         "version": 1,
         "summary": summary,
@@ -271,7 +271,7 @@ def _metrics(
     ]
 
 
-def _analytics(status: dict[str, Any], commands: dict[str, Any]) -> dict[str, Any]:
+def _analytics(status: dict[str, Any], commands: dict[str, Any], evaluation: dict[str, Any], strategy: str) -> dict[str, Any]:
     learning = _dict(status.get("learning"))
     zones = _dict(learning.get("zones"))
     history_by_zone = _dict(learning.get("analytics"))
@@ -279,8 +279,11 @@ def _analytics(status: dict[str, Any], commands: dict[str, Any]) -> dict[str, An
     active_groups = _id_set(commands.get("active_groups"))
     active_dampers = _id_set(commands.get("active_dampers"))
     zone_ids = _sorted_ids(set(zones) | set(history_by_zone) | set(forecasts_by_zone) | active_groups | active_dampers)
+    if strategy == "weather":
+        history, forecast = _first_series_pair(history_by_zone, forecasts_by_zone)
+        return {"cards": [_environment_analytics_card(status, evaluation, history, forecast)]}
     return {
-        "zones": [
+        "cards": [
             _analytics_zone(
                 zone_id,
                 _dict(zones.get(str(zone_id), zones.get(zone_id))),
@@ -288,6 +291,8 @@ def _analytics(status: dict[str, Any], commands: dict[str, Any]) -> dict[str, An
                 _list(forecasts_by_zone.get(str(zone_id), forecasts_by_zone.get(zone_id))),
                 active_groups,
                 active_dampers,
+                evaluation,
+                strategy,
             )
             for zone_id in zone_ids
         ]
@@ -301,6 +306,8 @@ def _analytics_zone(
     forecast: list[Any],
     active_groups: set[int],
     active_dampers: set[int],
+    evaluation: dict[str, Any],
+    strategy: str,
 ) -> dict[str, Any]:
     flags: list[str] = []
     if zone_id in active_groups:
@@ -311,28 +318,42 @@ def _analytics_zone(
         flags.append("Ready")
     if zone.get("learn") is True:
         flags.append("Learning")
-    label = _sparkline_label(history, forecast)
     return {
         "id": zone_id,
+        "kind": "zone",
+        "zone_id": zone_id,
+        "title": f"Zone {zone_id + 1}",
         "state": _analytics_zone_state(zone_id, zone, active_groups, active_dampers),
         "ready": zone.get("mpc_ready") is True,
         "learning": zone.get("learn") is True,
         "accelerated_learning": zone.get("accelerated_learning") is True,
         "flags": flags,
         "badges": _model_badges(zone),
-        "series": {
-            "history": history,
-            "forecast": forecast,
-            "has_data": _has_sparkline_data(history, forecast),
-            "label": label,
-            "meta": "History / Now / Forecast",
-        },
+        "chart": _analytics_chart(zone_id, history, forecast, evaluation, strategy),
+    }
+
+
+def _environment_analytics_card(status: dict[str, Any], evaluation: dict[str, Any], history: list[Any], forecast: list[Any]) -> dict[str, Any]:
+    surface = _environment_surface(status, evaluation)
+    forecast_quality = _dict(status.get("forecast_quality"))
+    return {
+        "id": "environment",
+        "kind": "environment",
+        "title": "Environment",
+        "state": surface.get("headline") or "Environment",
+        "ready": forecast_quality.get("used_for_control") is True,
+        "learning": False,
+        "accelerated_learning": False,
+        "flags": ["Environment", _title(forecast_quality.get("status") or "missing")],
+        "badges": list(surface.get("fields") or []),
+        "chart": _environment_chart(history, forecast, evaluation),
     }
 
 
 def _analytics_zone_state(zone_id: int, zone: dict[str, Any], active_groups: set[int], active_dampers: set[int]) -> str:
-    if zone.get("last_skip_reason"):
-        return _title(zone.get("last_skip_reason"))
+    skip_reason = zone.get("last_skip_reason")
+    if skip_reason and skip_reason != "outside_temperature_unavailable":
+        return _title(skip_reason)
     if zone.get("mpc_ready") is True:
         return "Ready"
     if zone.get("learn") is True:
@@ -342,6 +363,211 @@ def _analytics_zone_state(zone_id: int, zone: dict[str, Any], active_groups: set
     if zone_id in active_groups:
         return "Control Zone"
     return "No Temperature Sensor"
+
+
+def _analytics_chart(zone_id: int, history: list[Any], forecast: list[Any], evaluation: dict[str, Any], strategy: str) -> dict[str, Any]:
+    if strategy == "hybrid":
+        return _hybrid_chart(zone_id, history, forecast, evaluation)
+    if strategy == "zone":
+        return _zone_chart(zone_id, history, forecast, evaluation)
+    return _environment_chart(history, forecast, evaluation)
+
+
+def _environment_chart(history: list[Any], forecast: list[Any], evaluation: dict[str, Any]) -> dict[str, Any]:
+    actual = _chart_points(history, ("temperature", "room_temperature", "actual", "value"), limit=48)
+    outside = _chart_points(history, ("outdoor_temperature", "outside_temperature"), limit=48)
+    outside_future = _chart_points(forecast, ("outdoor_temperature", "outside_temperature"), offset=len(actual), limit=96)
+    weather = _dict(evaluation.get("weather_intent"))
+    lines = [
+        _chart_line("room", "Room", "actual", actual),
+        _chart_line("outside", "Outside", "context", outside + outside_future),
+    ]
+    return _chart(
+        "environment",
+        "Environment",
+        _compact_chart_summary(_first_number(weather.get("outside_temperature")), _last_y(outside + outside_future), prefix="Outside"),
+        lines,
+        [],
+        [],
+    )
+
+
+def _zone_chart(zone_id: int, history: list[Any], forecast: list[Any], evaluation: dict[str, Any]) -> dict[str, Any]:
+    mpc = _dict(evaluation.get("mpc"))
+    runtime = _dict(mpc.get("runtime_forecast"))
+    actual = _chart_points(history, ("temperature", "room_temperature", "actual", "value"), limit=48)
+    predicted = _chart_points(forecast, ("prediction", "predicted_temperature", "predicted", "temperature", "value"), offset=len(actual), limit=96)
+    runtime_points = _runtime_chart_points(runtime, "average_indoor_temperature")
+    target = _first_number(mpc.get("target"), evaluation.get("target"))
+    lines = [
+        _chart_line("room", "Room", "actual", actual),
+        _chart_line("prediction", "Plan", "forecast", runtime_points or predicted),
+    ]
+    if target is not None:
+        lines.append(_chart_line("target", "Target", "target", _target_points(target, runtime_points or predicted or actual)))
+    windows = _runtime_windows_for_chart(runtime)
+    runtime_hours = _first_number(runtime.get("runtime_hours"), mpc.get("projected_runtime_hours"))
+    return _chart(
+        "zone",
+        "Zone Plan",
+        _runtime_summary(runtime_hours, _last_y(runtime_points or predicted), target),
+        lines,
+        _comfort_bands(target),
+        windows,
+    )
+
+
+def _hybrid_chart(zone_id: int, history: list[Any], forecast: list[Any], evaluation: dict[str, Any]) -> dict[str, Any]:
+    mpc = _dict(evaluation.get("mpc"))
+    runtime = _dict(mpc.get("runtime_forecast"))
+    hybrid = _dict(evaluation.get("hybrid"))
+    actual = _chart_points(history, ("temperature", "room_temperature", "actual", "value"), limit=48)
+    control = _runtime_chart_points(runtime, "control_temperature")
+    predicted = _chart_points(forecast, ("prediction", "predicted_temperature", "predicted", "temperature", "value"), offset=len(actual), limit=96)
+    target = _first_number(mpc.get("target"), evaluation.get("target"))
+    lines = [
+        _chart_line("room", "Room", "actual", actual),
+        _chart_line("control", "Control", "forecast", control or predicted),
+    ]
+    if target is not None:
+        lines.append(_chart_line("target", "Target", "target", _target_points(target, control or predicted or actual)))
+    damper = _dict(hybrid.get("damper_percentages")).get(str(zone_id), _dict(hybrid.get("damper_percentages")).get(zone_id))
+    summary = _runtime_summary(_first_number(runtime.get("runtime_hours"), mpc.get("projected_runtime_hours")), _last_y(control or predicted), target)
+    if damper is not None:
+        summary = f"{_percent_text(damper)} damper / {summary}"
+    return _chart(
+        "hybrid",
+        "Hybrid Plan",
+        summary,
+        lines,
+        _comfort_bands(target),
+        _runtime_windows_for_chart(runtime),
+    )
+
+
+def _chart(
+    variant: str,
+    title: str,
+    summary: str,
+    lines: list[dict[str, Any]],
+    bands: list[dict[str, Any]],
+    windows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    visible_lines = [line for line in lines if line["points"]]
+    return {
+        "variant": variant,
+        "title": title,
+        "summary": summary,
+        "unit": "C",
+        "lines": visible_lines,
+        "bands": bands,
+        "windows": windows,
+        "has_data": sum(len(line["points"]) for line in visible_lines) >= 2,
+        "empty_reason": "No chart data" if sum(len(line["points"]) for line in visible_lines) < 2 else None,
+    }
+
+
+def _chart_line(key: str, label: str, kind: str, points: list[dict[str, float]]) -> dict[str, Any]:
+    return {"key": key, "label": label, "kind": kind, "points": points}
+
+
+def _chart_points(points: list[Any], keys: tuple[str, ...], *, offset: int = 0, limit: int = 96) -> list[dict[str, float]]:
+    result: list[dict[str, float]] = []
+    source = points[-limit:] if len(points) > limit else points
+    for index, point in enumerate(source):
+        value = _point_value(point, keys)
+        if value is None:
+            continue
+        x = _first_number(point.get("offset_minutes") if isinstance(point, dict) else None, point.get("ts") if isinstance(point, dict) else None)
+        result.append({"x": float(x if x is not None else offset + index), "y": round(value, 2)})
+    return result
+
+
+def _runtime_chart_points(runtime: dict[str, Any], key: str) -> list[dict[str, float]]:
+    points: list[dict[str, float]] = []
+    for index, point in enumerate(_list(runtime.get("series"))):
+        if not isinstance(point, dict):
+            continue
+        value = _first_number(point.get(key))
+        if value is None:
+            continue
+        x = _first_number(point.get("offset_minutes"), index)
+        points.append({"x": float(x if x is not None else index), "y": round(value, 2)})
+    return points
+
+
+def _runtime_windows_for_chart(runtime: dict[str, Any]) -> list[dict[str, Any]]:
+    windows: list[dict[str, Any]] = []
+    for window in _list(runtime.get("action_windows")):
+        if not isinstance(window, dict):
+            continue
+        windows.append(
+            {
+                "start": _first_number(window.get("start_offset_minutes"), 0) or 0,
+                "end": _first_number(window.get("end_offset_minutes"), 0) or 0,
+                "action": window.get("action") or "idle",
+                "power_fraction": _first_number(window.get("avg_power_fraction")),
+            }
+        )
+    return windows
+
+
+def _target_points(value: float, reference: list[dict[str, float]]) -> list[dict[str, float]]:
+    if len(reference) >= 2:
+        return [{"x": point["x"], "y": round(value, 2)} for point in reference]
+    return [{"x": 0.0, "y": round(value, 2)}, {"x": 1.0, "y": round(value, 2)}]
+
+
+def _comfort_bands(target: float | None) -> list[dict[str, Any]]:
+    if target is None:
+        return []
+    return [{"label": "Comfort", "min": round(target - 0.5, 2), "max": round(target + 0.5, 2)}]
+
+
+def _compact_chart_summary(current: float | None, future: float | None, *, prefix: str) -> str:
+    if current is None and future is None:
+        return "No trend"
+    if current is None:
+        return f"{prefix} -> {_temp_text(future or 0)}"
+    if future is None:
+        return f"{prefix} {_temp_text(current)}"
+    return f"{prefix} {_temp_text(current)} -> {_temp_text(future)}"
+
+
+def _runtime_summary(runtime_hours: float | None, future: float | None, target: float | None) -> str:
+    parts: list[str] = []
+    if runtime_hours is not None:
+        parts.append(f"{runtime_hours:.1f} h run" if runtime_hours < 10 else f"{runtime_hours:.0f} h run")
+    if future is not None:
+        parts.append(f"ends {_temp_text(future)}")
+    if target is not None:
+        parts.append(f"target {_temp_text(target)}")
+    return " / ".join(parts) if parts else "No plan"
+
+
+def _chart_length(lines: list[dict[str, Any]]) -> int:
+    return max((len(line.get("points") or []) for line in lines), default=0)
+
+
+def _last_y(points: list[dict[str, float]]) -> float | None:
+    return points[-1]["y"] if points else None
+
+
+def _percent_text(value: Any) -> str:
+    number = _first_number(value)
+    return "-" if number is None else f"{number:.0f}%"
+
+
+def _point_value(point: Any, keys: tuple[str, ...]) -> float | None:
+    if isinstance(point, (int, float)) and not isinstance(point, bool):
+        return float(point)
+    if not isinstance(point, dict):
+        return None
+    for key in keys:
+        value = _first_number(point.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def _model_badges(zone: dict[str, Any]) -> list[dict[str, Any]]:
@@ -413,6 +639,17 @@ def _id_set(value: Any) -> set[int]:
     return result
 
 
+def _first_series_pair(history_by_zone: dict[str, Any], forecasts_by_zone: dict[str, Any]) -> tuple[list[Any], list[Any]]:
+    ids = _sorted_ids(set(history_by_zone) | set(forecasts_by_zone))
+    if not ids:
+        return [], []
+    zone_id = ids[0]
+    return (
+        _list(history_by_zone.get(str(zone_id), history_by_zone.get(zone_id))),
+        _list(forecasts_by_zone.get(str(zone_id), forecasts_by_zone.get(zone_id))),
+    )
+
+
 def _sorted_ids(values: set[Any]) -> list[int]:
     result: set[int] = set()
     for value in values:
@@ -420,38 +657,6 @@ def _sorted_ids(values: set[Any]) -> list[int]:
         if number is not None:
             result.add(int(number))
     return sorted(result)
-
-
-def _has_sparkline_data(history: list[Any], forecast: list[Any]) -> bool:
-    return len(_series_values(history, ("temperature", "room_temperature", "actual", "value"))) + len(
-        _series_values(forecast, ("prediction", "predicted_temperature", "predicted", "temperature", "value"))
-    ) >= 2
-
-
-def _sparkline_label(history: list[Any], forecast: list[Any]) -> str:
-    actual = _series_values(history, ("temperature", "room_temperature", "actual", "value"))
-    predicted = _series_values(forecast, ("prediction", "predicted_temperature", "predicted", "temperature", "value"))
-    if not actual and not predicted:
-        return "No chart data"
-    if actual and predicted:
-        return f"{_temp_text(actual[-1])} -> {_temp_text(predicted[-1])}"
-    return f"{len(actual) + len(predicted)} points"
-
-
-def _series_values(points: list[Any], keys: tuple[str, ...]) -> list[float]:
-    values: list[float] = []
-    for point in points:
-        if isinstance(point, (int, float)) and not isinstance(point, bool):
-            values.append(float(point))
-            continue
-        if not isinstance(point, dict):
-            continue
-        for key in keys:
-            number = _first_number(point.get(key))
-            if number is not None:
-                values.append(number)
-                break
-    return values
 
 
 def _temp_text(value: float) -> str:

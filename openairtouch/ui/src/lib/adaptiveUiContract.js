@@ -1,6 +1,7 @@
 const REQUIRED_SURFACES = ["environment", "zone", "hybrid"];
 const REQUIRED_SUMMARY_FIELDS = ["headline", "detail", "authority", "mode", "strategy", "intent"];
-const REQUIRED_ANALYTICS_ZONE_FIELDS = ["id", "state", "flags", "badges", "series"];
+const REQUIRED_ANALYTICS_CARD_FIELDS = ["id", "kind", "title", "state", "flags", "badges", "chart"];
+const REQUIRED_CHART_FIELDS = ["variant", "title", "summary", "unit", "lines", "bands", "windows", "has_data"];
 
 const missing = (value) => value === undefined || value === null || value === "";
 
@@ -67,26 +68,32 @@ function validateAnalytics(analytics, issues) {
     issues.push("adaptive.ui.analytics is missing");
     return;
   }
-  if (!Array.isArray(analytics.zones)) {
-    issues.push("adaptive.ui.analytics.zones must be an array");
+  if (!Array.isArray(analytics.cards)) {
+    issues.push("adaptive.ui.analytics.cards must be an array");
     return;
   }
-  analytics.zones.forEach((zone, index) => validateAnalyticsZone(zone, index, issues));
+  analytics.cards.forEach((card, index) => validateAnalyticsCard(card, index, issues));
 }
 
-function validateAnalyticsZone(zone, index, issues) {
-  if (!zone || typeof zone !== "object") {
-    issues.push(`adaptive.ui.analytics.zones[${index}] is not an object`);
+function validateAnalyticsCard(card, index, issues) {
+  if (!card || typeof card !== "object") {
+    issues.push(`adaptive.ui.analytics.cards[${index}] is not an object`);
     return;
   }
-  for (const key of REQUIRED_ANALYTICS_ZONE_FIELDS) {
-    if (missing(zone[key])) issues.push(`adaptive.ui.analytics.zones[${index}].${key} is missing`);
+  for (const key of REQUIRED_ANALYTICS_CARD_FIELDS) {
+    if (missing(card[key])) issues.push(`adaptive.ui.analytics.cards[${index}].${key} is missing`);
   }
-  if (!Array.isArray(zone.flags)) issues.push(`adaptive.ui.analytics.zones[${index}].flags must be an array`);
-  if (!Array.isArray(zone.badges)) issues.push(`adaptive.ui.analytics.zones[${index}].badges must be an array`);
-  if (!zone.series || typeof zone.series !== "object") return;
-  if (!Array.isArray(zone.series.history)) issues.push(`adaptive.ui.analytics.zones[${index}].series.history must be an array`);
-  if (!Array.isArray(zone.series.forecast)) issues.push(`adaptive.ui.analytics.zones[${index}].series.forecast must be an array`);
-  if (missing(zone.series.label)) issues.push(`adaptive.ui.analytics.zones[${index}].series.label is missing`);
-  if (missing(zone.series.meta)) issues.push(`adaptive.ui.analytics.zones[${index}].series.meta is missing`);
+  if (!Array.isArray(card.flags)) issues.push(`adaptive.ui.analytics.cards[${index}].flags must be an array`);
+  if (!Array.isArray(card.badges)) issues.push(`adaptive.ui.analytics.cards[${index}].badges must be an array`);
+  validateAnalyticsChart(card.chart, index, issues);
+}
+
+function validateAnalyticsChart(chart, cardIndex, issues) {
+  if (!chart || typeof chart !== "object") return;
+  for (const key of REQUIRED_CHART_FIELDS) {
+    if (missing(chart[key])) issues.push(`adaptive.ui.analytics.cards[${cardIndex}].chart.${key} is missing`);
+  }
+  if (!Array.isArray(chart.lines)) issues.push(`adaptive.ui.analytics.cards[${cardIndex}].chart.lines must be an array`);
+  if (!Array.isArray(chart.bands)) issues.push(`adaptive.ui.analytics.cards[${cardIndex}].chart.bands must be an array`);
+  if (!Array.isArray(chart.windows)) issues.push(`adaptive.ui.analytics.cards[${cardIndex}].chart.windows must be an array`);
 }
