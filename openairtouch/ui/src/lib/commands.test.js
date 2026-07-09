@@ -38,7 +38,7 @@ test("adaptiveConfigPayload uses one comfort margin", () => {
 
 test("adaptiveConfigPayload includes ac power permission", () => {
   const payload = adaptiveConfigPayload(fakeAdaptiveCard({
-    "#adaptive-allow-ac-power-on": {checked: false}
+    "#adaptive-allow-ac-power-on": "false"
   }));
 
   assert.equal(payload.allow_ac_power_on, false);
@@ -68,8 +68,24 @@ test("adaptive config view exposes one comfort margin control", async () => {
   assert.match(source, /Comfort Margin/);
   assert.match(source, /id="adaptive-allow-ac-power-on"/);
   assert.match(source, /Allow AC Power On/);
+  assert.match(source, /<option value="true"/);
+  assert.match(source, /<option value="false"/);
   assert.match(source, /id="adaptive-hybrid-max-boost-degrees"/);
   assert.match(source, /Hybrid Max Boost/);
+  assert.match(source, /<div class="card-title">Timing And Model Tuning<\/div>/);
+  assert.match(source, /adaptive-config-actions/);
+  assert.doesNotMatch(source, /<details class="advanced-panel">/);
   assert.doesNotMatch(source, /adaptive-cool-diff/);
   assert.doesNotMatch(source, /adaptive-heat-diff/);
+});
+
+test("adaptive analytics view carries live zone names into chart labels", async () => {
+  const source = await readFile(new URL("../views/AdaptiveView.svelte", import.meta.url), "utf8");
+
+  assert.match(source, /function analyticsZoneLabel/);
+  assert.match(source, /groupEntries\.find/);
+  assert.match(source, /analyticsCardTitle\(card\)/);
+  assert.match(source, /analyticsChartTitle\(card, chart\)/);
+  assert.match(source, /function analyticsFlags/);
+  assert.match(source, /String\(flag \|\| ""\)\.toLowerCase\(\) !== state/);
 });

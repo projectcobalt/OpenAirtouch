@@ -26,7 +26,7 @@ def create_app(controller: RuntimeController):
         finally:
             controller.stop()
 
-    app = FastAPI(title="OpenAirTouch", version="0.8.7", lifespan=lifespan)
+    app = FastAPI(title="OpenAirTouch", version="0.8.8", lifespan=lifespan)
     mount_static_assets(app)
 
     from .api_http import register_http_routes

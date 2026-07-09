@@ -77,6 +77,25 @@
     || (label === "Zone" && strategy === "zone")
     || (label === "Hybrid" && strategy === "hybrid")
   );
+  function analyticsZoneLabel(card = {}) {
+    const zoneId = card.zone_id ?? (card.kind === "zone" ? card.id : null);
+    if (zoneId === undefined || zoneId === null) return "";
+    const group = groupEntries.find(([id]) => Number(id) === Number(zoneId))?.[1] || {};
+    return zoneName(zoneId, group);
+  }
+  function analyticsCardTitle(card = {}) {
+    return analyticsZoneLabel(card) || card.title || "Analytics";
+  }
+  function analyticsChartTitle(card = {}, chart = {}) {
+    const label = analyticsZoneLabel(card);
+    if (!label) return chart.title;
+    if (!chart.title || chart.title.includes(label)) return label || chart.title;
+    return `${label} - ${chart.title}`;
+  }
+  function analyticsFlags(card = {}) {
+    const state = String(card.state || "").toLowerCase();
+    return (Array.isArray(card.flags) ? card.flags : []).filter((flag) => String(flag || "").toLowerCase() !== state);
+  }
 
   $: uiSummary = adaptiveUi.summary || {};
   $: uiSurfaces = adaptiveUi.surfaces || {};
@@ -162,7 +181,7 @@
           <label class="field">Mode<select id="adaptive-mode"><option value="off" selected={(adaptiveConfig.mode || "off") === "off"}>Off</option><option value="recommend" selected={adaptiveConfig.mode === "recommend"}>Recommend</option><option value="adaptive" selected={adaptiveConfig.mode === "adaptive"}>Adaptive</option></select></label>
           <label class="field">Strategy<select id="adaptive-control-strategy"><option value="weather" selected={(adaptiveConfig.control_strategy || "weather") === "weather"}>Environment</option><option value="zone" selected={adaptiveConfig.control_strategy === "zone"}>Zone</option><option value="hybrid" selected={adaptiveConfig.control_strategy === "hybrid"}>Hybrid</option></select></label>
           <label class="field">Comfort Margin<input id="adaptive-comfort-margin" type="number" min="0" max="15" value={adaptiveConfig.comfort_margin ?? 4} /></label>
-          <label class="check-row"><input id="adaptive-allow-ac-power-on" type="checkbox" checked={adaptiveConfig.allow_ac_power_on !== false} /><span>Allow AC Power On</span></label>
+          <label class="field">Allow AC Power On<select id="adaptive-allow-ac-power-on"><option value="true" selected={adaptiveConfig.allow_ac_power_on !== false}>Yes</option><option value="false" selected={adaptiveConfig.allow_ac_power_on === false}>No</option></select></label>
           <label class="field">Cooling Comfort<input id="adaptive-cool-comfort-temp" type="number" min="16" max="32" value={adaptiveConfig.cool_comfort_temp ?? 24} /></label>
           <label class="field">Heating Comfort<input id="adaptive-heat-comfort-temp" type="number" min="16" max="32" value={adaptiveConfig.heat_comfort_temp ?? 20} /></label>
           <label class="field">Dry Humidity Threshold<input id="adaptive-dry-humidity-threshold" type="number" min="30" max="100" value={adaptiveConfig.dry_humidity_threshold ?? 70} /></label>
@@ -179,7 +198,6 @@
       </article>
       <article class="summary-card editor-card adaptive-config-card">
         <div class="card-title">Outside Air Zones</div>
-        <div class="hero-detail">Fresh-air actuator selection lives here, not in spill configuration.</div>
         <div class="chip-grid">
           {#each zoneEntries as [id, group]}
             <label class="check-row"><input type="checkbox" data-adaptive-outside-air-zone value={Number(id)} checked={(adaptiveConfig.outside_air_zones || []).map(Number).includes(Number(id))} /><span>{zoneName(id, group)}</span></label>
@@ -187,22 +205,20 @@
         </div>
       </article>
       <article class="summary-card editor-card adaptive-config-card">
-        <details class="advanced-panel">
-          <summary>Timing And Model Tuning</summary>
-          <div class="field-grid">
-            <label class="field">Check Interval<input id="adaptive-check-interval" type="number" min="5" max="3600" value={adaptiveConfig.check_interval ?? 60} /></label>
-            <label class="field">Command Cooldown<input id="adaptive-command-cooldown" type="number" min="1" max="7200" value={adaptiveConfig.command_cooldown ?? 300} /></label>
-            <label class="field">Model Horizon<input id="adaptive-mpc-horizon-hours" type="number" min="1" max="24" value={adaptiveConfig.mpc_horizon_hours ?? 6} /></label>
-            <label class="field">Hybrid Max Boost<input id="adaptive-hybrid-max-boost-degrees" type="number" min="0" max="5" step="1" value={adaptiveConfig.hybrid_max_boost_degrees ?? 2} /></label>
-            <label class="field">Minimum Run<input id="adaptive-compressor-min-run-time" type="number" min="0" value={adaptiveConfig.compressor_min_run_time ?? 0} /></label>
-            <label class="field">Minimum Off<input id="adaptive-compressor-min-off-time" type="number" min="0" value={adaptiveConfig.compressor_min_off_time ?? 0} /></label>
-          </div>
-        </details>
-        <div class="service-actions">
-          <button type="button" class="action-primary" disabled={pendingKey === "adaptive-save"} on:click={onSaveConfig}>Save Adaptive</button>
-          <button type="button" disabled={pendingKey === "adaptive-model-reset_all-all"} on:click={() => onModelAction("reset_all")}>Reset Models</button>
+        <div class="card-title">Timing And Model Tuning</div>
+        <div class="field-grid">
+          <label class="field">Check Interval<input id="adaptive-check-interval" type="number" min="5" max="3600" value={adaptiveConfig.check_interval ?? 60} /></label>
+          <label class="field">Command Cooldown<input id="adaptive-command-cooldown" type="number" min="1" max="7200" value={adaptiveConfig.command_cooldown ?? 300} /></label>
+          <label class="field">Model Horizon<input id="adaptive-mpc-horizon-hours" type="number" min="1" max="24" value={adaptiveConfig.mpc_horizon_hours ?? 6} /></label>
+          <label class="field">Hybrid Max Boost<input id="adaptive-hybrid-max-boost-degrees" type="number" min="0" max="5" step="1" value={adaptiveConfig.hybrid_max_boost_degrees ?? 2} /></label>
+          <label class="field">Minimum Run<input id="adaptive-compressor-min-run-time" type="number" min="0" value={adaptiveConfig.compressor_min_run_time ?? 0} /></label>
+          <label class="field">Minimum Off<input id="adaptive-compressor-min-off-time" type="number" min="0" value={adaptiveConfig.compressor_min_off_time ?? 0} /></label>
         </div>
       </article>
+      <div class="service-actions adaptive-config-actions">
+        <button type="button" class="action-primary" disabled={pendingKey === "adaptive-save"} on:click={onSaveConfig}>Save Adaptive</button>
+        <button type="button" disabled={pendingKey === "adaptive-model-reset_all-all"} on:click={() => onModelAction("reset_all")}>Reset Models</button>
+      </div>
     </div>
   {:else}
     {#if !contractReady}
@@ -225,11 +241,11 @@
         <article class="summary-card analytics-row" class:ready={card.ready} class:learning={card.learning} data-analytics-kind={card.kind}>
           <div class="analytics-row-status">
             <div>
-              <div class="card-title">{card.title || (zoneId === undefined || zoneId === null ? "Analytics" : zoneName(zoneId))}</div>
+              <div class="card-title">{analyticsCardTitle(card)}</div>
               <div class="hero-detail">{card.state}</div>
             </div>
             <div class="pill-row-inline">
-              {#each card.flags as flag}
+              {#each analyticsFlags(card) as flag}
                 <span>{flag}</span>
               {/each}
             </div>
@@ -247,7 +263,7 @@
                 <path class={lineClass(line.kind)} d={line.path}></path>
               {/each}
             </svg>
-            <div class="analytics-sparkline-meta"><span>{chart.title}</span><span>{chart.hasData ? chart.summary : "No chart data"}</span></div>
+            <div class="analytics-sparkline-meta"><span>{analyticsChartTitle(card, chart)}</span><span>{chart.hasData ? chart.summary : "No chart data"}</span></div>
           </div>
           <div class="model-badge-grid">
             {#each card.badges.slice(0, 6) as badge}

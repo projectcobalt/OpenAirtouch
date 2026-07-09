@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+## 0.8.8 - 2026-07-10
+
 - Add AT5 protocol bootstrap detection behind the protocol profile boundary while keeping upstream runtime and service layers protocol-agnostic.
 - Reuse the detected protocol on TCP reconnects as a warm start instead of rerunning the full cold boot detection flow.
 - Require touchpad address evidence before active auto/warm AT4 startup, and allow explicit local development sharing on secondary address 0x91.
+- Refine adaptive strategy authority, including AC power-on permission, zone-aware demand, hybrid damper control, global setpoint prediction, and boost handling.
+- Upgrade adaptive analytics charts with strategy-specific presentation, live zone names, cleaner status pills, outside temperature availability, and less cramped zone card layout.
+- Tidy adaptive config controls with a Yes/No AC power selector, a single comfort margin, always-visible timing/model tuning fields, and bottom-aligned save/reset actions.
 
 ## 0.8.7 - 2026-07-09
 

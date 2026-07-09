@@ -115,7 +115,7 @@ export function adaptiveConfigPayload(card) {
     mode: card?.querySelector("#adaptive-mode")?.value || "off",
     control_strategy: card?.querySelector("#adaptive-control-strategy")?.value || "weather",
     comfort_margin: Number(card?.querySelector("#adaptive-comfort-margin")?.value || 4),
-    allow_ac_power_on: card?.querySelector("#adaptive-allow-ac-power-on")?.checked !== false,
+    allow_ac_power_on: card?.querySelector("#adaptive-allow-ac-power-on")?.value !== "false",
     cool_comfort_temp: Number(card?.querySelector("#adaptive-cool-comfort-temp")?.value || 24),
     heat_comfort_temp: Number(card?.querySelector("#adaptive-heat-comfort-temp")?.value || 20),
     dry_humidity_threshold: Number(card?.querySelector("#adaptive-dry-humidity-threshold")?.value || 70),
