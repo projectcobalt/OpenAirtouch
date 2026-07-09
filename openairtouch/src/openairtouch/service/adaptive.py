@@ -7,8 +7,9 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from ..session.queue import TransactionSpec
-from .commands import CommandRequestError, build_transaction
 from .adaptive_airtouch import translate_airtouch_snapshot
+from .adaptive_commands import AdaptiveCommandMixin
+from .adaptive_contracts import build_adaptive_input_contract, build_adaptive_ui_contract
 from .adaptive_intent import _intent_status, _mode_intent_status
 from .adaptive_mpc import AdaptiveMpcEngine, MpcInputs
 from .adaptive_model import AdaptiveDevice, AdaptiveRoom
@@ -69,7 +70,7 @@ class AcModeIntent:
     ventilation_reason: str | None = None
 
 
-class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
+class AdaptiveController(AdaptiveStrategyMixin, AdaptiveCommandMixin, AdaptiveRestoreMixin):
     def __init__(self, config: AdaptiveConfig = AdaptiveConfig()) -> None:
         self.config = _validated_config(config)
         self._next_check = 0.0
@@ -198,12 +199,13 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
         if now < self._next_check:
             return []
         self._next_check = now + max(5.0, self.config.check_interval)
-        weather = ((integrations.get("weather") or {}).get("state") or {}) if integrations else {}
-        indoor = ((integrations.get("indoor") or {}).get("state") or {}) if integrations else {}
+        inputs = build_adaptive_input_contract(runtime_snapshot, integrations, runtime_control)
+        weather = inputs.weather
+        indoor = inputs.indoor
         weather_signal = _weather_signal(weather, integrations, horizon_hours=self.config.mpc_horizon_hours)
         solar_signal = _solar_signal(weather, integrations)
         telemetry_signal = _ac_telemetry_signal(integrations)
-        state = runtime_snapshot.get("state") or {}
+        state = inputs.airtouch_state
         self._set_compressor_groups(_compressor_groups_from_zone_map(state) or self.config.compressor_groups)
         mode = self.config.mode
         adaptive_snapshot = translate_airtouch_snapshot(
@@ -581,81 +583,6 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
                 specs.extend(self._restore_group_percentage(state, group_id, status, now))
         return specs
 
-    def _set_ac_setpoint(self, state: dict[str, Any], ac_id: int, setpoint: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        ac = _indexed(state.get("acs") or {}, ac_id) or {}
-        current = _number((ac.get("status") or {}).get("setpoint")) if isinstance(ac, dict) else None
-        if current is None or int(round(current)) == setpoint:
-            return None
-        key = f"ac:{ac_id}:setpoint"
-        payload = {"ac": ac_id, "setpoint": setpoint}
-        self._record_restore(key, "ac_status", {"ac": ac_id, "setpoint": int(round(current))}, payload)
-        return self._send_transaction(state, "ac_status", payload, key, status, now)
-
-    def _set_ac_mode(self, state: dict[str, Any], ac_id: int, mode_intent: AcModeIntent, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        if mode_intent.mode is None or mode_intent.mode == mode_intent.current_mode:
-            return None
-        key = f"ac:{ac_id}:mode"
-        payload = {"ac": ac_id, "mode": mode_intent.mode}
-        self._record_restore(key, "ac_status", {"ac": ac_id, "mode": mode_intent.current_mode}, payload)
-        return self._send_transaction(state, "ac_status", payload, key, status, now)
-
-    def _set_ac_control_sensor(self, state: dict[str, Any], ac_id: int, sensor: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        records = _ac_setting_records_from_state(state)
-        record = next((item for item in records if item.get("ac") == ac_id), None)
-        if record is None:
-            status["errors"].append(f"missing AC setting record for AC {ac_id + 1}")
-            return None
-        current = _optional_int(record.get("ctrl_thermostat"))
-        if current is None or current == sensor:
-            return None
-        target_records = [dict(item) for item in records]
-        target = next(item for item in target_records if item.get("ac") == ac_id)
-        target["ctrl_thermostat"] = sensor
-        payload = {"ac": ac_id, "ctrl_thermostat": sensor, "records": target_records}
-        original_records = [dict(item) for item in records]
-        original_payload = {"ac": ac_id, "ctrl_thermostat": current, "records": original_records}
-        key = f"ac:{ac_id}:control_sensor"
-        self._record_restore(key, "ac_setting_new", original_payload, {"ac": ac_id, "ctrl_thermostat": sensor})
-        return self._send_transaction(state, "ac_setting_new", payload, key, status, now)
-
-    def _set_touchpad_temperature(self, state: dict[str, Any], sensor: int, temperature: float, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        payload = {"sensor": sensor, "temperature": int(round(temperature))}
-        return self._send_transaction(state, "sensor_temperature", payload, f"sensor:{sensor}:temperature", status, now)
-
-    def _set_group_setpoint(self, state: dict[str, Any], group_id: int, setpoint: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        group = _group_for_id(state, group_id)
-        current = _number((group.get("status") or {}).get("setpoint")) if isinstance(group, dict) else None
-        if current is None or int(round(current)) == setpoint:
-            return None
-        key = f"group:{group_id}:setpoint"
-        payload = {"group": group_id, "setpoint": setpoint}
-        self._record_restore(key, "group_setpoint", {"group": group_id, "setpoint": int(round(current))}, payload)
-        return self._send_transaction(state, "group_setpoint", payload, key, status, now)
-
-    def _set_group_percentage(self, state: dict[str, Any], group_id: int, percentage: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
-        group = _group_for_id(state, group_id)
-        group_status = (group.get("status") or {}) if isinstance(group, dict) else {}
-        current = _number(group_status.get("percentage"))
-        if current is None or int(round(current)) == percentage:
-            return None
-        payload = {"group": group_id, "percentage": percentage}
-        if group_status.get("sensor_control") is True:
-            setpoint = _number(group_status.get("setpoint"))
-            if setpoint is None:
-                return None
-            key = f"group:{group_id}:sensor_control"
-            self._record_restore(
-                key,
-                "group_setpoint",
-                {"group": group_id, "setpoint": int(round(setpoint))},
-                payload,
-                target_action="group_percentage",
-            )
-        else:
-            key = f"group:{group_id}:percentage"
-            self._record_restore(key, "group_percentage", {"group": group_id, "percentage": int(round(current))}, payload)
-        return self._send_transaction(state, "group_percentage", payload, key, status, now)
-
     def _weather_key(self, ac_id: int) -> str:
         return f"ac:{ac_id}"
 
@@ -742,50 +669,6 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
             ),
         }
 
-    def _send_ac_power(
-        self,
-        state: dict[str, Any],
-        ac_id: int,
-        power_on: bool,
-        status: dict[str, Any],
-        now: float,
-        *,
-        key_prefix: str,
-    ) -> TransactionSpec | None:
-        return self._send_transaction(
-            state,
-            "ac_status",
-            {"ac": ac_id, "power_on": power_on},
-            f"{key_prefix}:ac:{ac_id}:power",
-            status,
-            now,
-        )
-
-    def _send_transaction(
-        self,
-        state: dict[str, Any],
-        action: str,
-        payload: dict[str, Any],
-        throttle_key: str,
-        status: dict[str, Any],
-        now: float,
-    ) -> TransactionSpec | None:
-        throttle_value = _command_value(payload)
-        if throttle_value is not None and not self._should_send(throttle_key, throttle_value, now):
-            return None
-        try:
-            return build_transaction(action, payload, state=state)
-        except CommandRequestError as exc:
-            status["errors"].append(str(exc))
-            return None
-
-    def _should_send(self, key: str, value: int | bool, now: float) -> bool:
-        last = self._last_command.get(key)
-        if last is not None and last[0] == value and now - last[1] < max(1.0, self.config.command_cooldown):
-            return False
-        self._last_command[key] = (value, now)
-        return True
-
     def _empty_status(self) -> dict[str, Any]:
         return {
             "mode": self.config.mode,
@@ -793,6 +676,7 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
             "outside_temperature": None,
             "recommendations": [],
             "actions": [],
+            "command_intents": [],
             "intents": [],
             "errors": [],
             "evaluations": [],
@@ -820,6 +704,7 @@ class AdaptiveController(AdaptiveStrategyMixin, AdaptiveRestoreMixin):
         status["intents"] = [_intent_status(evaluation, status) for evaluation in status.get("evaluations", [])]
         for evaluation, intent in zip(status.get("evaluations", []), status["intents"], strict=False):
             evaluation["intent"] = intent
+        status["ui"] = build_adaptive_ui_contract(status)
         return status
 
 
@@ -1093,17 +978,6 @@ def _runtime_control_status(runtime_snapshot: dict[str, Any]) -> dict[str, Any]:
         "connected": connected,
         "reason": None if connected else "Runtime Is Not Connected To The Mainboard",
     }
-
-
-def _command_value(payload: dict[str, Any]) -> int | bool | None:
-    for key in ("mode", "setpoint", "percentage", "temperature", "ctrl_thermostat", "power_on"):
-        if key in payload:
-            value = payload[key]
-            if isinstance(value, bool):
-                return value
-            parsed = _optional_int(value)
-            return parsed
-    return None
 
 
 def _active_ac_restore_ids(records: dict[str, dict[str, Any]]) -> list[int]:

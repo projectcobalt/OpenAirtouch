@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..session.queue import TransactionSpec
+from .adaptive_contracts import AdaptiveCommandIntent
 
 
 class AdaptiveRestoreMixin:
@@ -135,13 +136,21 @@ class AdaptiveRestoreMixin:
     ) -> TransactionSpec | None:
         if action == "ac_status":
             key_suffix = "mode" if "mode" in original else "setpoint" if "setpoint" in original else "status"
-            return self._send_transaction(state, action, original, f"restore:ac:{original.get('ac')}:{key_suffix}", status, now)
+            key = f"restore:ac:{original.get('ac')}:{key_suffix}"
+            intent = AdaptiveCommandIntent(action, original, "restore", "restore AC state", restore_key=key, expected_value=_command_value(original))
+            return self._send_transaction(state, intent, key, status, now)
         if action == "group_setpoint":
-            return self._send_transaction(state, action, original, f"restore:group:{original.get('group')}:setpoint", status, now)
+            key = f"restore:group:{original.get('group')}:setpoint"
+            intent = AdaptiveCommandIntent(action, original, "restore", "restore zone setpoint", restore_key=key, expected_value=_command_value(original))
+            return self._send_transaction(state, intent, key, status, now)
         if action == "group_percentage":
-            return self._send_transaction(state, action, original, f"restore:group:{original.get('group')}:percentage", status, now)
+            key = f"restore:group:{original.get('group')}:percentage"
+            intent = AdaptiveCommandIntent(action, original, "restore", "restore zone damper", restore_key=key, expected_value=_command_value(original))
+            return self._send_transaction(state, intent, key, status, now)
         if action == "ac_setting_new":
-            return self._send_transaction(state, action, original, f"restore:ac:{original.get('ac')}:control_sensor", status, now)
+            key = f"restore:ac:{original.get('ac')}:control_sensor"
+            intent = AdaptiveCommandIntent(action, original, "restore", "restore AC control sensor", restore_key=key, expected_value=_command_value(original))
+            return self._send_transaction(state, intent, key, status, now)
         return None
 
     def _restore_action_text(self, state: dict[str, Any], action: str, original: dict[str, Any]) -> str:
@@ -255,6 +264,16 @@ def _optional_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _command_value(payload: dict[str, Any]) -> int | bool | None:
+    for key in ("mode", "setpoint", "percentage", "temperature", "ctrl_thermostat", "power_on"):
+        if key in payload:
+            value = payload[key]
+            if isinstance(value, bool):
+                return value
+            return _optional_int(value)
+    return None
 
 
 def _mode_name(mode: int | None) -> str:
