@@ -2,11 +2,42 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Protocol
-
-from ..packet import AirTouchPacket
+from typing import Any, Iterable, Protocol, runtime_checkable
 from ..session.init import InitStep
 from ..session.queue import TransactionSpec
+
+
+@runtime_checkable
+class ProtocolPacket(Protocol):
+    dest: int
+    src: int
+    packet_id: int
+    command: int
+    payload: bytes
+    raw_mode: bool
+    stream_offset: int
+
+    @property
+    def crc_ok(self) -> bool:
+        ...
+
+    @property
+    def command_name(self) -> str:
+        ...
+
+    @property
+    def dest_name(self) -> str:
+        ...
+
+    @property
+    def src_name(self) -> str:
+        ...
+
+    def encode(self, *, raw_mode: bool | None = None, stuff_raw: bool = False) -> bytes:
+        ...
+
+    def to_record(self) -> dict:
+        ...
 
 
 class ProtocolSession(Protocol):
@@ -16,10 +47,10 @@ class ProtocolSession(Protocol):
     touchpad_temperature_source: str
     touchpad_temperature_detail: dict[str, Any]
 
-    def build_packet(self, command: int, payload: bytes = b"") -> tuple[AirTouchPacket, bytes]:
+    def build_packet(self, command: int, payload: bytes = b"") -> tuple[ProtocolPacket, bytes]:
         ...
 
-    def build_heartbeat(self) -> tuple[AirTouchPacket, bytes]:
+    def build_heartbeat(self) -> tuple[ProtocolPacket, bytes]:
         ...
 
     def current_heartbeat_payload(self) -> bytes:
@@ -28,7 +59,7 @@ class ProtocolSession(Protocol):
     def set_touchpad_temperature(self, temperature: float, *, source: str = "runtime", detail: dict[str, Any] | None = None) -> None:
         ...
 
-    def build_touchpad_info_request(self) -> tuple[AirTouchPacket, bytes]:
+    def build_touchpad_info_request(self) -> tuple[ProtocolPacket, bytes]:
         ...
 
     def due_heartbeat(self, now: float | None = None) -> bool:
@@ -37,7 +68,7 @@ class ProtocolSession(Protocol):
     def mark_heartbeat_sent(self, now: float | None = None) -> None:
         ...
 
-    def feed_rx(self, data: bytes) -> list[AirTouchPacket]:
+    def feed_rx(self, data: bytes) -> list[ProtocolPacket]:
         ...
 
     def choose_available_address(self) -> int | None:
@@ -74,7 +105,7 @@ class ProtocolProfile(Protocol):
     def decode_payload(self, command: int, payload: bytes) -> dict[str, Any]:
         ...
 
-    def decode_packet(self, packet: AirTouchPacket) -> dict[str, Any]:
+    def decode_packet(self, packet: ProtocolPacket) -> dict[str, Any]:
         ...
 
     def build_transaction(self, action: str, data: dict[str, Any], *, state: dict[str, Any] | None = None) -> TransactionSpec:

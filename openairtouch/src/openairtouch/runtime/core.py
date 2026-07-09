@@ -6,8 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Iterable, Protocol
 
-from ..packet import AirTouchPacket
-from ..protocols import AT4, ProtocolProfile, ProtocolSession, ProtocolState, get_profile
+from ..protocols import AT4, AT5, ProtocolPacket, ProtocolProfile, ProtocolSession, ProtocolState, get_profile
 from ..session.queue import TransactionEvent, TransactionQueue, TransactionSpec
 
 
@@ -30,6 +29,7 @@ class RuntimeConfig:
     heartbeat_interval: float = 30.0
     touchpad_temperature: float = 23.0
     init_transactions: bool = True
+    protocol: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class RuntimeEvent:
     """Event emitted by the runtime loop."""
 
     event: str
-    packet: AirTouchPacket | None = None
+    packet: ProtocolPacket | None = None
     wire: bytes | None = None
     transaction: TransactionEvent | None = None
     message: str = ""
@@ -74,11 +74,13 @@ class AirTouchRuntime:
     address_assigned: bool = False
     detected_protocol: str | None = None
     protocol_mismatch: bool = False
+    protocol_latched: bool = False
+    protocol_detection_failed: bool = False
     sensor_info_requested: set[int] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         if self.profile is None:
-            self.profile = get_profile("auto")
+            self.profile = get_profile(self.config.protocol)
         if self.session is None:
             self.session = self._profile.create_session(
                 touchpad_temperature=self.config.touchpad_temperature,
@@ -106,10 +108,19 @@ class AirTouchRuntime:
 
         current = time.monotonic() if now is None else now
         events: list[RuntimeEvent] = []
-        packet, wire = self._session.build_touchpad_info_request()
-        events.append(self._tx_event(packet, wire))
 
-        detect_until = current + self.config.detect_seconds
+        if self.config.protocol.lower() == "auto" and self.config.detect_seconds > 0:
+            events.extend(self._detect_and_latch_protocol(current))
+            if not self.protocol_latched:
+                return events
+            current = time.monotonic()
+        else:
+            self.protocol_latched = True
+            self.detected_protocol = self._profile.name
+            packet, wire = self._session.build_touchpad_info_request()
+            events.append(self._tx_event(packet, wire))
+
+        detect_until = current if self.config.protocol.lower() == "auto" else current + self.config.detect_seconds
         while time.monotonic() < detect_until:
             events.extend(self._read_available())
 
@@ -173,11 +184,13 @@ class AirTouchRuntime:
             "runtime": {
                 "active": self.config.active,
                 "connected": connected,
-                "protocol_mode": "auto",
+                "protocol_mode": self.config.protocol,
                 "protocol": self._profile.name,
                 "protocol_name": self._profile.display_name,
                 "detected_protocol": self.detected_protocol,
                 "protocol_mismatch": self.protocol_mismatch,
+                "protocol_latched": self.protocol_latched,
+                "protocol_detection_failed": self.protocol_detection_failed,
                 "boot_complete": self.boot_complete,
                 "address_assigned": self.address_assigned,
                 "src": f"0x{self._session.src:02X}",
@@ -212,31 +225,14 @@ class AirTouchRuntime:
             return []
         events: list[RuntimeEvent] = []
         for packet in self._session.feed_rx(data):
-            self.rx_count += 1
-            detected = self._profile.detect_response(packet.command, packet.payload)
-            decoded = self._profile.decode_packet(packet)
-            if detected is not None:
-                decoded = {**decoded, "detected_protocol": detected}
-                self._handle_detected_protocol(detected)
-            state_changed = decoded.get("decoder") != "client_api"
-            message = self._state_log_message(decoded) if state_changed else ""
-            if state_changed:
-                self._state.apply_decoded(packet.command, decoded)
-                self._state.last_command = packet.command
-                self._queue_sensor_info_requests(decoded)
-            events.append(RuntimeEvent("rx", packet=packet, message=message, decoded=decoded, state_changed=state_changed))
-            if self.transactions is not None:
-                events.extend(
-                    RuntimeEvent("transaction", transaction=event)
-                    for event in self.transactions.observe(packet)
-                )
+            events.extend(self._handle_rx_packet(packet))
         return events
 
     def _write(self, wire: bytes) -> None:
         self.transport.write(wire)
         self.tx_count += 1
 
-    def _tx_event(self, packet: AirTouchPacket, wire: bytes) -> RuntimeEvent:
+    def _tx_event(self, packet: ProtocolPacket, wire: bytes) -> RuntimeEvent:
         self._write(wire)
         decoded = self._profile.decode_payload(packet.command, packet.payload)
         message = self._profile.control_message(decoded)
@@ -254,17 +250,117 @@ class AirTouchRuntime:
         return self.profile or AT4
 
     def _handle_detected_protocol(self, detected: str) -> None:
-        self.detected_protocol = detected
-        if detected == self._profile.name:
-            self.protocol_mismatch = False
+        if self.protocol_latched:
+            if detected != self._profile.name:
+                self.protocol_mismatch = True
+                self.boot_complete = False
+                if self.transactions is not None:
+                    self.transactions = None
             return
-        if detected != self._profile.name:
-            self.protocol_mismatch = True
-            self.boot_complete = False
-            if self.transactions is not None:
-                self.transactions = None
+        self._latch_protocol(detected)
 
     def _queue_sensor_info_requests(self, decoded: dict) -> None:
         specs = list(self._profile.sensor_info_requests(decoded, self.sensor_info_requested))
         if specs:
             self.enqueue(specs)
+
+    def _detect_and_latch_protocol(self, started: float) -> list[RuntimeEvent]:
+        at4_session = self._profile.create_session(
+            touchpad_temperature=self.config.touchpad_temperature,
+            heartbeat_interval=self.config.heartbeat_interval,
+        )
+        at5_session = AT5.create_session(
+            touchpad_temperature=self.config.touchpad_temperature,
+            heartbeat_interval=self.config.heartbeat_interval,
+        )
+        candidates: tuple[tuple[ProtocolProfile, ProtocolSession], ...] = (
+            (AT4, at4_session),
+            (AT5, at5_session),
+        )
+        events: list[RuntimeEvent] = []
+        events.extend(self._send_boot_probes(candidates))
+
+        detect_until = started + self.config.detect_seconds
+        while time.monotonic() < detect_until and not self.protocol_latched:
+            data = self.transport.read()
+            if not data:
+                continue
+            for profile, session in candidates:
+                for packet in session.feed_rx(data):
+                    detected = profile.detect_response(packet.command, packet.payload)
+                    if detected is None:
+                        continue
+                    self._latch_protocol(detected, session=session)
+                    events.extend(self._handle_rx_packet(packet))
+                    break
+                if self.protocol_latched:
+                    break
+
+        if not self.protocol_latched:
+            self.protocol_detection_failed = True
+            self.boot_complete = False
+            self.address_assigned = False
+            self.transactions = None
+            events.append(RuntimeEvent(
+                "status",
+                message="no supported AirTouch protocol detected; runtime held before init",
+            ))
+        return events
+
+    def _send_boot_probes(self, candidates: tuple[tuple[ProtocolProfile, ProtocolSession], ...]) -> list[RuntimeEvent]:
+        events: list[RuntimeEvent] = []
+        for profile, session in candidates:
+            probes = [session.build_touchpad_info_request()]
+            if profile.name == "at4":
+                probes.append(session.build_packet(0x55))
+            elif profile.name == "at5":
+                probes.append(session.build_packet(0xC045))
+            for packet, wire in probes:
+                self._write(wire)
+                events.append(RuntimeEvent(
+                    "tx",
+                    packet=packet,
+                    wire=wire,
+                    decoded=profile.decode_payload(packet.command, packet.payload),
+                    state_changed=False,
+                ))
+        return events
+
+    def _latch_protocol(self, detected: str, *, session: ProtocolSession | None = None) -> None:
+        self.profile = get_profile(detected)
+        self.session = session or self._profile.create_session(
+            touchpad_temperature=self.config.touchpad_temperature,
+            heartbeat_interval=self.config.heartbeat_interval,
+        )
+        self.state = self._profile.create_state()
+        self.detected_protocol = detected
+        self.protocol_latched = True
+        self.protocol_detection_failed = False
+        self.protocol_mismatch = False
+        self.sensor_info_requested.clear()
+        if self.config.active and self.config.init_transactions:
+            self.transactions = TransactionQueue()
+            self.transactions.enqueue_many(self._profile.init_transactions())
+        else:
+            self.transactions = None
+
+    def _handle_rx_packet(self, packet: ProtocolPacket) -> list[RuntimeEvent]:
+        self.rx_count += 1
+        detected = self._profile.detect_response(packet.command, packet.payload)
+        decoded = self._profile.decode_packet(packet)
+        if detected is not None:
+            decoded = {**decoded, "detected_protocol": detected}
+            self._handle_detected_protocol(detected)
+        state_changed = decoded.get("decoder") != "client_api"
+        message = self._state_log_message(decoded) if state_changed else ""
+        if state_changed:
+            self._state.apply_decoded(packet.command, decoded)
+            self._state.last_command = packet.command
+            self._queue_sensor_info_requests(decoded)
+        events = [RuntimeEvent("rx", packet=packet, message=message, decoded=decoded, state_changed=state_changed)]
+        if self.transactions is not None:
+            events.extend(
+                RuntimeEvent("transaction", transaction=event)
+                for event in self.transactions.observe(packet)
+            )
+        return events

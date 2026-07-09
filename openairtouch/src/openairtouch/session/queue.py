@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque
+from typing import Deque, Protocol
 
 from ..commands import CommandSpec
-from ..packet import AirTouchPacket
 
 
 RESPONSE_COMMANDS: dict[int, tuple[int, ...]] = {
@@ -52,6 +51,10 @@ RESPONSE_COMMANDS: dict[int, tuple[int, ...]] = {
     0x78: (0x79,),
     0x79: (0x79,),
 }
+
+
+class PacketLike(Protocol):
+    command: int
 
 
 @dataclass(frozen=True)
@@ -128,7 +131,7 @@ class TransactionQueue:
         for spec in specs:
             self.enqueue(spec)
 
-    def observe(self, packet: AirTouchPacket) -> list[TransactionEvent]:
+    def observe(self, packet: PacketLike) -> list[TransactionEvent]:
         if self.current is None:
             return []
         runtime = self.current

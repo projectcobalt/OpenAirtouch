@@ -148,11 +148,12 @@ class RuntimeController:
         snap = self.snapshot()
         runtime = snap["runtime"] or {}
         runtime_meta = runtime.get("runtime", {})
+        connected = runtime_meta.get("connected", False)
         return {
-            "ok": snap["controller"]["status"] == "running" and snap["controller"]["error"] is None,
+            "ok": snap["controller"]["status"] == "running" and snap["controller"]["error"] is None and connected,
             "status": snap["controller"]["status"],
             "error": snap["controller"]["error"],
-            "connected": runtime_meta.get("connected", False),
+            "connected": connected,
             "address_assigned": runtime_meta.get("address_assigned", False),
             "boot_complete": runtime_meta.get("boot_complete", False),
             "protocol_mode": runtime_meta.get("protocol_mode"),
@@ -160,6 +161,8 @@ class RuntimeController:
             "protocol_name": runtime_meta.get("protocol_name"),
             "detected_protocol": runtime_meta.get("detected_protocol"),
             "protocol_mismatch": runtime_meta.get("protocol_mismatch", False),
+            "protocol_latched": runtime_meta.get("protocol_latched", False),
+            "protocol_detection_failed": runtime_meta.get("protocol_detection_failed", False),
             "src": runtime_meta.get("src"),
             "config": snap["controller"]["config"],
         }
