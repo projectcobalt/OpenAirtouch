@@ -1,5 +1,6 @@
 <script>
   import Subnav from "../components/Subnav.svelte";
+  import { validateAdaptiveUiContract } from "../lib/adaptiveUiContract.js";
   import { title } from "../lib/format.js";
 
   export let options = [];
@@ -66,76 +67,10 @@
     || (label === "Zone" && strategy === "zone")
     || (label === "Hybrid" && strategy === "hybrid")
   );
-  const requiredSurfaces = ["environment", "zone", "hybrid"];
-  const contractIssues = (ui = {}) => {
-    const issues = [];
-    if (!ui || typeof ui !== "object") return ["adaptive.ui is missing"];
-    if (ui.version !== 1) issues.push("adaptive.ui.version must be 1");
-    const summary = ui.summary;
-    if (!summary || typeof summary !== "object") {
-      issues.push("adaptive.ui.summary is missing");
-    } else {
-      for (const key of ["headline", "detail", "authority", "mode", "strategy", "intent"]) {
-        if (summary[key] === undefined || summary[key] === null || summary[key] === "") issues.push(`adaptive.ui.summary.${key} is missing`);
-      }
-    }
-    const surfaces = ui.surfaces;
-    if (!surfaces || typeof surfaces !== "object") {
-      issues.push("adaptive.ui.surfaces is missing");
-    } else {
-      for (const key of requiredSurfaces) {
-        const surface = surfaces[key];
-        if (!surface || typeof surface !== "object") {
-          issues.push(`adaptive.ui.surfaces.${key} is missing`);
-          continue;
-        }
-        for (const field of ["headline", "detail", "state"]) {
-          if (surface[field] === undefined || surface[field] === null || surface[field] === "") issues.push(`adaptive.ui.surfaces.${key}.${field} is missing`);
-        }
-        if (!Array.isArray(surface.fields)) issues.push(`adaptive.ui.surfaces.${key}.fields must be an array`);
-      }
-    }
-    if (!Array.isArray(ui.metrics) || !ui.metrics.length) {
-      issues.push("adaptive.ui.metrics must be a non-empty array");
-    } else {
-      ui.metrics.forEach((metric, index) => {
-        if (!metric || typeof metric !== "object") {
-          issues.push(`adaptive.ui.metrics[${index}] is not an object`);
-          return;
-        }
-        if (!metric.label) issues.push(`adaptive.ui.metrics[${index}].label is missing`);
-        if (metric.value === undefined || metric.value === null || metric.value === "") issues.push(`adaptive.ui.metrics[${index}].value is missing`);
-      });
-    }
-    const analytics = ui.analytics;
-    if (!analytics || typeof analytics !== "object") {
-      issues.push("adaptive.ui.analytics is missing");
-    } else if (!Array.isArray(analytics.zones)) {
-      issues.push("adaptive.ui.analytics.zones must be an array");
-    } else {
-      analytics.zones.forEach((zone, index) => {
-        if (!zone || typeof zone !== "object") {
-          issues.push(`adaptive.ui.analytics.zones[${index}] is not an object`);
-          return;
-        }
-        for (const key of ["id", "state", "flags", "badges", "series"]) {
-          if (zone[key] === undefined || zone[key] === null) issues.push(`adaptive.ui.analytics.zones[${index}].${key} is missing`);
-        }
-        if (!Array.isArray(zone.flags)) issues.push(`adaptive.ui.analytics.zones[${index}].flags must be an array`);
-        if (!Array.isArray(zone.badges)) issues.push(`adaptive.ui.analytics.zones[${index}].badges must be an array`);
-        if (!zone.series || typeof zone.series !== "object") return;
-        if (!Array.isArray(zone.series.history)) issues.push(`adaptive.ui.analytics.zones[${index}].series.history must be an array`);
-        if (!Array.isArray(zone.series.forecast)) issues.push(`adaptive.ui.analytics.zones[${index}].series.forecast must be an array`);
-        if (zone.series.label === undefined || zone.series.label === null) issues.push(`adaptive.ui.analytics.zones[${index}].series.label is missing`);
-        if (zone.series.meta === undefined || zone.series.meta === null) issues.push(`adaptive.ui.analytics.zones[${index}].series.meta is missing`);
-      });
-    }
-    return issues;
-  };
 
   $: uiSummary = adaptiveUi.summary || {};
   $: uiSurfaces = adaptiveUi.surfaces || {};
-  $: contractErrors = contractIssues(adaptiveUi);
+  $: contractErrors = validateAdaptiveUiContract(adaptiveUi);
   $: contractReady = contractErrors.length === 0;
   $: zoneEntries = selectedZones.length ? selectedZones : groupEntries.filter(([_id, group]) => !groupIsSpill(group));
   $: activeMode = uiSummary.mode;
