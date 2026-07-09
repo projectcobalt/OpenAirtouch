@@ -28,7 +28,6 @@ from .event_log import event_record as _event_record
 from .event_log import frame_log_line as _frame_log_line
 from .ha_client import HomeAssistantApiConfig
 from .integration_loop import RuntimeIntegrationLoop, RuntimeIntegrationLoopConfig
-from .integration_loop import datetime_payload as _datetime_payload
 from .integration_loop import touchpad_temperature_status as _touchpad_temperature_status
 from .integrations import HomeAssistantIntegrationPoller
 from .runtime_host import RuntimeHost, RuntimeHostConfig
@@ -234,9 +233,6 @@ class RuntimeController:
             self._mark_changed_locked()
             return learning
 
-    def _drain_commands(self, runtime: AirTouchRuntime) -> None:
-        self._command_queue.drain_into(runtime)
-
     def _set_runtime(self, runtime: AirTouchRuntime) -> None:
         self._mark_changed_locked()
 
@@ -277,27 +273,6 @@ class RuntimeController:
             self._error = record["message"]
             self._events.append(record)
             self._mark_changed_locked()
-
-    def _poll_weather(self) -> None:
-        self._integration_loop.poll_weather()
-
-    def _run_adaptive(self, runtime: AirTouchRuntime) -> None:
-        self._integration_loop.run_adaptive(runtime)
-
-    def _update_touchpad_temperature(self, runtime: AirTouchRuntime) -> None:
-        self._integration_loop.update_touchpad_temperature(runtime)
-
-    def _sync_datetime_if_due(self, runtime: AirTouchRuntime) -> None:
-        self._integration_loop.sync_datetime_if_due(runtime)
-
-    def _datetime_sync_status(self, runtime_snapshot: dict[str, Any] | None) -> dict[str, Any]:
-        return self._integration_loop.datetime_sync_status(runtime_snapshot)
-
-    def _save_adaptive_learning_periodically(self) -> None:
-        self._integration_loop.save_adaptive_learning_periodically()
-
-    def _save_adaptive_learning_now(self) -> None:
-        self._integration_loop.save_adaptive_learning_now()
 
     def _default_transport_factory(self) -> AbstractContextManager[TransportLike]:
         return build_transport_factory(

@@ -12,10 +12,13 @@ from typing import Iterable
 
 from openairtouch.packet import AirTouchPacket
 from openairtouch.runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent
-from openairtouch.service.adaptive import AdaptiveConfig
+from openairtouch.service.adaptive import AdaptiveConfig, AdaptiveController
 from openairtouch.service.adaptive_mpc import ZoneThermalModel
-from openairtouch.service.controller import RuntimeController, RuntimeControllerConfig, _datetime_payload, _event_record
+from openairtouch.service.controller import RuntimeController, RuntimeControllerConfig
+from openairtouch.service.event_log import event_record as _event_record
 from openairtouch.service.ha_client import HomeAssistantApiConfig
+from openairtouch.service.integration_loop import RuntimeIntegrationLoop, RuntimeIntegrationLoopConfig, datetime_payload
+from openairtouch.service.integrations import HomeAssistantIntegrationPoller
 from openairtouch.session.queue import TransactionSpec
 from openairtouch.transport import TcpSerialTransport
 
@@ -60,8 +63,38 @@ class FakeWeatherClient:
         return {"entity_id": "sun.sun", "state": "above_horizon"}
 
 
+class FakeIntegrationPoller:
+    def poll(self) -> bool:
+        return False
+
+    def runtime_inputs(self) -> dict:
+        return {}
+
+    def indoor_input(self) -> dict:
+        return {}
+
+    def home_assistant_timezone(self) -> str | None:
+        return None
+
+
 def wire_packet(command: int, payload: bytes = b"", *, src: int = 0x80, dest: int = 0x90) -> bytes:
     return AirTouchPacket(dest=dest, src=src, packet_id=1, command=command, payload=payload, raw_mode=True).encode(stuff_raw=True)
+
+
+def integration_loop(
+    *,
+    adaptive: AdaptiveController | None = None,
+    learning_path: Path | None = None,
+    runtime_config: RuntimeConfig = RuntimeConfig(),
+) -> RuntimeIntegrationLoop:
+    return RuntimeIntegrationLoop(
+        config=RuntimeIntegrationLoopConfig(adaptive_learning_path=learning_path),
+        integrations=FakeIntegrationPoller(),
+        adaptive=adaptive or AdaptiveController(AdaptiveConfig()),
+        runtime_config=lambda: runtime_config,
+        on_changed=lambda: None,
+        on_adaptive_event=lambda _event: None,
+    )
 
 
 class RuntimeControllerTests(unittest.TestCase):
@@ -151,7 +184,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertTrue(any(event["transaction"]["transaction_event"] == "complete" for event in transaction_events))
 
     def test_datetime_payload_uses_airtouch_weekday_numbering(self) -> None:
-        payload = _datetime_payload(datetime(2026, 7, 5, 14, 3, 2))
+        payload = datetime_payload(datetime(2026, 7, 5, 14, 3, 2))
 
         self.assertEqual(payload, {
             "year": 2026,
@@ -178,11 +211,11 @@ class RuntimeControllerTests(unittest.TestCase):
         standby_runtime.session.src = 0x91
         standby_runtime.boot_complete = True
         standby_runtime.address_assigned = True
-        main = RuntimeController(RuntimeControllerConfig(port="TEST"))
-        standby = RuntimeController(RuntimeControllerConfig(port="TEST"))
+        main = integration_loop()
+        standby = integration_loop()
 
-        main._sync_datetime_if_due(main_runtime)
-        standby._sync_datetime_if_due(standby_runtime)
+        main.sync_datetime_if_due(main_runtime)
+        standby.sync_datetime_if_due(standby_runtime)
 
         assert main_runtime.transactions is not None
         self.assertEqual(main_runtime.transactions.pending[0].spec.command, 0x40)
@@ -251,9 +284,9 @@ class RuntimeControllerTests(unittest.TestCase):
     def test_adaptive_learning_data_can_be_reloaded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "adaptive_learning.json"
-            first = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_learning_path=path))
-            first._adaptive._mpc.zone_models[3] = ZoneThermalModel(passive_samples=4)
-            first._save_adaptive_learning_periodically()
+            adaptive = AdaptiveController(AdaptiveConfig())
+            adaptive._mpc.zone_models[3] = ZoneThermalModel(passive_samples=4)
+            integration_loop(adaptive=adaptive, learning_path=path).save_adaptive_learning_now()
 
             second = RuntimeController(RuntimeControllerConfig(port="TEST", adaptive_learning_path=path))
 
@@ -278,24 +311,21 @@ class RuntimeControllerTests(unittest.TestCase):
             self.assertNotIn("2", payload["zones"])
 
     def test_weather_missing_temperature_surfaces_soft_error_and_recovers(self) -> None:
-        controller = RuntimeController(
-            RuntimeControllerConfig(
-                port="TEST",
-                weather=HomeAssistantApiConfig(weather_entity="weather.micro_weather_station"),
-            )
-        )
-        controller._integrations.client = FakeWeatherClient(
-            [
-                {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": None},
-                {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": 17.1},
-            ]
+        poller = HomeAssistantIntegrationPoller(
+            HomeAssistantApiConfig(weather_entity="weather.micro_weather_station"),
+            poll_interval=1.0,
+            client=FakeWeatherClient(
+                [
+                    {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": None},
+                    {"entity_id": "weather.micro_weather_station", "state": "cloudy", "temperature": 17.1},
+                ]
+            ),
         )
 
-        controller._poll_weather()
-        first = controller.snapshot()["integrations"]["weather"]
-        controller._integrations._next_poll = 0.0
-        controller._poll_weather()
-        second = controller.snapshot()["integrations"]["weather"]
+        poller.poll(now=1.0)
+        first = poller.snapshot()["weather"]
+        poller.poll(now=12.0)
+        second = poller.snapshot()["weather"]
 
         self.assertEqual(first["error"], "weather.micro_weather_station has no numeric temperature")
         self.assertIsNone(second["error"])
