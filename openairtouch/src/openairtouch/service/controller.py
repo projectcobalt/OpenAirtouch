@@ -2,34 +2,40 @@
 
 from __future__ import annotations
 
-import json
-import queue
 import threading
 import time
 import logging
-from collections import deque
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .. import commands
 from ..constants import ADDR_TOUCHPAD_1
 from ..live_log import JsonlBusLogger
-from ..packet import PacketParseError, parse_packet
 from ..runtime import AirTouchRuntime, RuntimeConfig, RuntimeEvent, TransportLike
 from ..session.queue import TransactionSpec
-from ..transport import SerialConfig, SerialRs485Transport, TcpSerialConfig, TcpSerialTransport
 from .adaptive import AdaptiveConfig, AdaptiveController
+from .command_queue import RuntimeCommandQueue
+from .config_store import float_or_none as _float_or_none
+from .config_store import load_adaptive_config as _load_adaptive_config
+from .config_store import load_adaptive_learning as _load_adaptive_learning
+from .config_store import load_runtime_config as _load_runtime_config
+from .config_store import save_adaptive_config as _save_adaptive_config
+from .config_store import save_adaptive_learning as _save_adaptive_learning
+from .config_store import save_runtime_config as _save_runtime_config
 from .error_resolver import RemoteErrorResolver, RemoteErrorResolverConfig
-from .event_text import describe_event
+from .event_log import EventHistory
+from .event_log import controller_error_record as _controller_error_record
+from .event_log import event_record as _event_record
+from .event_log import frame_log_line as _frame_log_line
 from .ha_client import HomeAssistantApiConfig
 from .integrations import HomeAssistantIntegrationPoller
+from .transport_factory import TransportFactory, build_transport_factory
 from .touchpad_temperature import TouchpadTemperatureResult, resolve_touchpad_temperature
 
-TransportFactory = Callable[[], AbstractContextManager[TransportLike]]
 LOG = logging.getLogger("uvicorn.error")
 DATETIME_SYNC_INTERVAL = 60.0
 
@@ -67,13 +73,11 @@ class RuntimeController:
         self.config = config
         self._transport_factory = transport_factory or self._default_transport_factory
         self._lock = threading.RLock()
-        self._change = threading.Condition(self._lock)
-        self._change_version = 0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._runtime: AirTouchRuntime | None = None
-        self._events: deque[dict[str, Any]] = deque(maxlen=config.event_history)
-        self._command_queue: queue.Queue[TransactionSpec] = queue.Queue()
+        self._events = EventHistory(config.event_history)
+        self._command_queue = RuntimeCommandQueue()
         self._status = "stopped"
         self._error: str | None = None
         self._integrations = HomeAssistantIntegrationPoller(
@@ -111,12 +115,7 @@ class RuntimeController:
             thread.join(timeout)
 
     def enqueue(self, spec: TransactionSpec) -> dict[str, Any]:
-        self._command_queue.put(spec)
-        return {
-            "queued": True,
-            "command": f"0x{spec.command:02X}",
-            "name": spec.name,
-        }
+        return self._command_queue.enqueue(spec)
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -162,18 +161,13 @@ class RuntimeController:
         }
 
     def recent_events(self) -> list[dict[str, Any]]:
-        with self._lock:
-            return list(self._events)
+        return self._events.recent()
 
     def change_version(self) -> int:
-        with self._lock:
-            return self._change_version
+        return self._events.version()
 
     def wait_for_change(self, version: int, timeout: float = 30.0) -> int:
-        with self._change:
-            if self._change_version <= version:
-                self._change.wait(timeout)
-            return self._change_version
+        return self._events.wait_for_change(version, timeout)
 
     def public_config(self) -> dict[str, Any]:
         return {
@@ -268,20 +262,11 @@ class RuntimeController:
         self._error_resolver.stop()
 
     def _drain_commands(self, runtime: AirTouchRuntime) -> None:
-        specs = []
-        while True:
-            try:
-                specs.append(self._command_queue.get_nowait())
-            except queue.Empty:
-                break
-        if specs:
-            runtime.enqueue(specs)
+        self._command_queue.drain_into(runtime)
 
     def _record_event(self, event: RuntimeEvent, bus_logger: JsonlBusLogger) -> None:
         record = _event_record(event)
-        with self._lock:
-            self._events.append(record)
-            self._mark_changed_locked()
+        self._events.append(record)
         if event.event == "rx" and event.packet is not None:
             bus_logger.log_rx(event.packet)
             LOG.info(_frame_log_line("rx", event))
@@ -295,18 +280,10 @@ class RuntimeController:
             LOG.info("runtime status %s", event.message)
 
     def _record_controller_error(self, exc: Exception) -> None:
-        message = f"{type(exc).__name__}: {exc}"
-        record = {
-            "event": "controller",
-            "message": message,
-            "state_changed": False,
-        }
-        plain = describe_event(record)
-        record["plain"] = plain
-        record["summary"] = plain["text"]
+        record = _controller_error_record(exc)
         with self._lock:
             self._status = "reconnecting"
-            self._error = message
+            self._error = record["message"]
             self._events.append(record)
             self._mark_changed_locked()
 
@@ -441,44 +418,16 @@ class RuntimeController:
             time.sleep(min(0.2, deadline - time.monotonic()))
 
     def _default_transport_factory(self) -> AbstractContextManager[TransportLike]:
-        if self.config.transport == "local_serial":
-            return SerialRs485Transport(SerialConfig(port=self.config.port, baudrate=self.config.baudrate))
-        if self.config.transport == "tcp_serial":
-            return TcpSerialTransport(TcpSerialConfig(host=self.config.tcp_host, port=self.config.tcp_port))
-        raise ValueError(f"unsupported transport: {self.config.transport}")
+        return build_transport_factory(
+            transport=self.config.transport,
+            port=self.config.port,
+            baudrate=self.config.baudrate,
+            tcp_host=self.config.tcp_host,
+            tcp_port=self.config.tcp_port,
+        )
 
     def _mark_changed_locked(self) -> None:
-        self._change_version += 1
-        self._change.notify_all()
-
-
-def _event_record(event: RuntimeEvent) -> dict[str, Any]:
-    record: dict[str, Any] = {
-        "event": event.event,
-        "message": event.message,
-        "state_changed": event.state_changed,
-    }
-    packet = _event_packet_for_log(event)
-    if packet is not None:
-        record.update({
-            "direction": event.direction,
-            "src": f"0x{packet.src:02X}",
-            "dest": f"0x{packet.dest:02X}",
-            "cmd": f"0x{packet.command:02X}",
-            "cmd_name": packet.command_name,
-            "packet_id": packet.packet_id,
-            "len": len(packet.payload),
-            "crc_ok": packet.crc_ok,
-            "decoded": event.decoded,
-        })
-    if event.transaction is not None:
-        record["transaction"] = event.transaction.to_record()
-    plain = describe_event(record)
-    record["plain"] = plain
-    record["summary"] = plain["text"]
-    if not record["message"]:
-        record["message"] = plain["text"]
-    return record
+        self._events.mark_changed()
 
 
 def _touchpad_temperature_status(result: TouchpadTemperatureResult) -> dict[str, Any]:
@@ -501,13 +450,6 @@ def _datetime_payload(clock: datetime) -> dict[str, int]:
     }
 
 
-def _float_or_none(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _add_error_displays(runtime_snapshot: dict[str, Any], resolver: RemoteErrorResolver) -> None:
     state = runtime_snapshot.get("state") or {}
     for ac in (state.get("acs") or {}).values():
@@ -522,119 +464,3 @@ def _add_error_displays(runtime_snapshot: dict[str, Any], resolver: RemoteErrorR
             status["error_display"] = error
 
 
-def _frame_log_line(direction: str, event: RuntimeEvent) -> str:
-    packet = _event_packet_for_log(event)
-    if packet is None:
-        return f"bus {direction} packet=none"
-    return (
-        f"bus {direction} "
-        f"src=0x{packet.src:02X} dest=0x{packet.dest:02X} "
-        f"cmd=0x{packet.command:02X} {packet.command_name} "
-        f"id={packet.packet_id} len={len(packet.payload)} crc_ok={packet.crc_ok} "
-        f"payload={packet.payload.hex(' ').upper()}"
-    )
-
-
-def _event_packet_for_log(event: RuntimeEvent) -> Any:
-    if event.event == "tx" and event.wire is not None:
-        try:
-            return parse_packet(event.wire)
-        except PacketParseError:
-            return event.packet
-    return event.packet
-
-
-def _load_adaptive_config(default: AdaptiveConfig, path: Path | None) -> AdaptiveConfig:
-    if path is None:
-        return default
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return default
-    except (OSError, json.JSONDecodeError) as exc:
-        LOG.warning("Could not load adaptive config from %s: %s", path, exc)
-        return default
-    if not isinstance(payload, dict):
-        LOG.warning("Ignoring adaptive config from %s because it is not an object", path)
-        return default
-    fields = default.__dataclass_fields__
-    data = {name: getattr(default, name) for name in fields}
-    data.update({key: value for key, value in payload.items() if key in fields})
-    try:
-        return AdaptiveController(AdaptiveConfig(**data)).config
-    except (TypeError, ValueError) as exc:
-        LOG.warning("Ignoring invalid adaptive config from %s: %s", path, exc)
-        return default
-
-
-def _load_runtime_config(default: RuntimeConfig, path: Path | None) -> RuntimeConfig:
-    if path is None:
-        return default
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return default
-    except (OSError, json.JSONDecodeError) as exc:
-        LOG.warning("Could not load runtime config from %s: %s", path, exc)
-        return default
-    if not isinstance(payload, dict):
-        LOG.warning("Ignoring runtime config from %s because it is not an object", path)
-        return default
-    temperature = _float_or_none(payload.get("fallback_touchpad_temperature"))
-    if temperature is None:
-        temperature = _float_or_none(payload.get("touchpad_temperature"))
-    if temperature is None:
-        return default
-    return replace(default, touchpad_temperature=round(min(max(temperature, 0.0), 50.0), 1))
-
-
-def _save_runtime_config(path: Path | None, config: RuntimeConfig) -> None:
-    if path is None:
-        return
-    payload = {"fallback_touchpad_temperature": config.touchpad_temperature}
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f".{path.name}.tmp")
-        temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        temp_path.replace(path)
-    except OSError as exc:
-        LOG.warning("Could not save runtime config to %s: %s", path, exc)
-
-
-def _save_adaptive_config(path: Path | None, config: dict[str, Any]) -> None:
-    if path is None:
-        return
-    allowed = AdaptiveConfig.__dataclass_fields__
-    payload = {key: config[key] for key in allowed if key in config}
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f".{path.name}.tmp")
-        temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        temp_path.replace(path)
-    except OSError as exc:
-        LOG.warning("Could not save adaptive config to %s: %s", path, exc)
-
-
-def _load_adaptive_learning(path: Path | None) -> dict[str, Any]:
-    if path is None:
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, json.JSONDecodeError) as exc:
-        LOG.warning("Could not load adaptive learning data from %s: %s", path, exc)
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _save_adaptive_learning(path: Path | None, payload: dict[str, Any]) -> None:
-    if path is None:
-        return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f".{path.name}.tmp")
-        temp_path.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True), encoding="utf-8")
-        temp_path.replace(path)
-    except OSError as exc:
-        LOG.warning("Could not save adaptive learning data to %s: %s", path, exc)
