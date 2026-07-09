@@ -10,6 +10,8 @@
 
 ## 0.8.6 - 2026-07-09
 
+- Add a versioned adaptive UI contract with display-ready status metrics and analytics zone rows.
+- Move Adaptive Status and Analytics rendering onto the backend contract so the frontend surfaces missing contract fields loudly instead of reconstructing adaptive meaning.
 - Rename internal package and frontend helper paths from airtouch4 to openairtouch while keeping user-facing AirTouch protocol wording where it describes the actual bus.
 - Remove add-on startup options for protocol selection, touchpad address overrides, touchpad temperature seed, heartbeat payload override, and UI theme.
 - Keep runtime-owned touchpad temperature fallback and UI theme settings in the app, and always generate heartbeat payloads from the resolved runtime touchpad temperature.

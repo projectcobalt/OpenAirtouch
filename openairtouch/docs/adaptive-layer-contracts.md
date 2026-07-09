@@ -35,8 +35,12 @@ The adaptive layer has three boundaries:
 - `surfaces.environment`: outside temperature, forecast quality, weather pause, and fresh-air status.
 - `surfaces.zone`: target, expected runtime, learning readiness, and zone action.
 - `surfaces.hybrid`: control temperature, damper airflow plan, touchpad sensor, and strategy.
+- `metrics`: display-ready status-strip rows such as authority, learning, control temperature, active control count, and ownership/detail.
+- `analytics`: display-ready zone rows with adaptive state labels, flags, model badges, accelerated-learning state, and chart series data.
 - `plan`: machine-readable target, runtime, control temperature, damper percentages, power fractions, and runtime series.
 - `inputs`: normalized sensor/source values and errors.
 - `commands`: current recommendations, actions, and active restore/control surfaces.
 
-The UI should prefer this contract for the adaptive status page. The older `evaluations`, `intents`, and strategy-specific fields can remain available for diagnostics and compatibility, but they should not be the primary frontend rendering contract.
+The UI status and analytics pages should render this contract directly. If required fields are missing, they should surface a contract error rather than deriving replacement meaning from the older `evaluations`, `intents`, `learning`, or strategy-specific fields. Those older fields can remain available for diagnostics, but they should not be the primary frontend rendering contract.
+
+The frontend may still perform presentation-only work such as drawing an SVG path from `analytics.zones[].series.history` and `analytics.zones[].series.forecast`. Semantic decisions such as which zones appear, whether a zone is ready/learning, what badges mean, and what status text to show belong in the backend contract.

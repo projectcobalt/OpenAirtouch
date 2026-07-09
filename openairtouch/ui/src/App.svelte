@@ -35,7 +35,7 @@
     zonePayload as buildZonePayload
   } from "./lib/commands.js";
   import { apiPath, fetchJson, postCommand, wsPath } from "./lib/client.js";
-  import { clamp, finite, percentText, tempText, title } from "./lib/format.js";
+  import { clamp, finite, title } from "./lib/format.js";
   import {
     acName as selectAcName,
     activeZoneEntriesForAc as selectActiveZoneEntriesForAc,
@@ -471,10 +471,6 @@
     return [...new Set(groupIds.map(Number).filter(Number.isFinite))];
   }
 
-  function adaptiveMetric(label, value) {
-    return {label, value: value === undefined || value === null || value === "" ? "-" : String(value)};
-  }
-
   function groupsFromBitmap(low = 0, high = 0) {
     return selectGroupsFromBitmap(low, high);
   }
@@ -617,116 +613,6 @@
         pendingKey = "";
       }, 650);
     }
-  }
-
-  function adaptiveHeadline() {
-    const weather = adaptive.weather_intent || {};
-    const modeIntent = adaptive.mode_intent || {};
-    if (weather.headline) return weather.headline;
-    if (weather.pause_active) return "AC Paused";
-    if (weather.resume_pending) return "AC Resume Pending";
-    if (modeIntent.name) return title(modeIntent.name);
-    if (adaptive.recommended_target !== undefined && adaptive.recommended_target !== null) return `Recommended Target: ${tempText(adaptive.recommended_target)}`;
-    if ((adaptive.mode || adaptiveConfig.mode) === "off") return "AirTouch Has Control";
-    if (adaptiveReadyCount === 0) return "Model Learning";
-    return "Adaptive Ready";
-  }
-
-  function adaptiveReason() {
-    const weather = adaptive.weather_intent || {};
-    const modeIntent = adaptive.mode_intent || {};
-    return weather.summary || weather.reason || modeIntent.reason || modeIntent.ventilation_reason || adaptive.recommendations?.[0] || "Waiting for clearer adaptive intent";
-  }
-
-  function adaptiveOwnership() {
-    const weather = adaptive.weather_intent || {};
-    if (!runtime.connected) return "Runtime disconnected: adaptive commands and restores are held";
-    if (weather.pause_active) return "Environment owns the current AC pause";
-    if (weather.resume_pending) return "Environment resume pending";
-    if ((adaptive.mode || adaptiveConfig.mode) === "off") return "Adaptive off: restore only, no new control";
-    if ((adaptive.mode || adaptiveConfig.mode) === "recommend") return "Recommend only: no commands";
-    return "Adaptive may control selected zones";
-  }
-
-  function adaptiveHours(value) {
-    const hours = finite(value);
-    return hours === null ? "-" : `${hours.toFixed(hours < 10 ? 1 : 0)} h`;
-  }
-
-  function adaptiveUntil(value) {
-    if (!value) return "";
-    const timestamp = Number(value) > 10000000000 ? Number(value) : Number(value) * 1000;
-    if (!Number.isFinite(timestamp)) return String(value);
-    return new Date(timestamp).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
-  }
-
-  function environmentIntent() {
-    const weather = adaptive.weather_intent || {};
-    const quality = adaptive.air_quality || {};
-    const outside = finite(weather.outside_temperature) ?? finite(adaptive.outside_temperature);
-    const windowMinutes = finite(weather.favourable_window_minutes);
-    const headline = weather.headline || (weather.pause_active ? "AC Paused" : weather.nice_outside ? "Nice Outside" : quality.co2_high ? "Outside Air Recommended" : "Environment Watching");
-    const summary = weather.summary || weather.reason || quality.ventilation_reason || (windowMinutes !== null ? `Forecast Looks Helpful For ${(windowMinutes / 60).toFixed(1)} H` : "Outdoor and air quality inputs are being watched");
-    return {
-      headline,
-      summary,
-      fields: [
-        adaptiveMetric("Outside", outside === null ? "-" : tempText(outside)),
-        adaptiveMetric("Nice Until", weather.nice_until ? adaptiveUntil(weather.nice_until) : "-"),
-        adaptiveMetric("Pause", weather.pause_active ? "Active" : weather.pause_recommended ? "Recommended" : "Clear"),
-        adaptiveMetric("Fresh Air", weather.outside_air_intent || quality.fan_recommended ? "Recommended" : "Not Requested")
-      ]
-    };
-  }
-
-  function zoneIntent() {
-    const modeIntent = adaptive.mode_intent || {};
-    const target = finite(adaptive.recommended_target ?? modeIntent.target ?? modeIntent.setpoint);
-    const runtime = finite(adaptive.runtime_hours ?? adaptive.projected_runtime_hours ?? modeIntent.projected_runtime_hours);
-    const headline = modeIntent.name ? title(modeIntent.name) : target !== null ? `Recommended Target: ${tempText(target)}` : adaptiveReadyCount ? "Zone Models Ready" : "Waiting For Zones";
-    const summary = modeIntent.reason || adaptive.recommendations?.[0] || (adaptiveReadyCount ? `${adaptiveReadyCount} zone models are ready` : "Model Learning: Waiting For More Samples");
-    return {
-      headline,
-      summary,
-      fields: [
-        adaptiveMetric("Target", target === null ? "-" : tempText(target)),
-        adaptiveMetric("Expected Runtime", runtime === null ? "-" : adaptiveHours(runtime)),
-        adaptiveMetric("Learning", `${adaptiveReadyCount} ready / ${adaptiveLearningCount} learning`),
-        adaptiveMetric("Active Zones", (adaptive.active_groups || []).length || activeZoneCount)
-      ]
-    };
-  }
-
-  function hybridIntent() {
-    const strategy = adaptiveConfig.control_strategy || "weather";
-    const dampers = adaptive.active_dampers || {};
-    const activePlan = Object.entries(dampers).length
-      ? Object.entries(dampers).slice(0, 4).map(([id, value]) => `${zoneName(id, groups[String(id)] || {})} ${Math.round(Number(value))}%`).join(", ")
-      : selectedZones.filter(([_id, group]) => groupIsOn(group)).slice(0, 4).map(([id, group]) => `${zoneName(id, group)} ${Math.round(finite(group?.status?.percentage) ?? 0)}%`).join(", ");
-    const heatCool = ["heat", "cool", "auto"].includes(currentModeKey);
-    return {
-      headline: strategy === "hybrid" && heatCool ? "Damper Plan" : "AirTouch Has Control",
-      summary: activePlan || (heatCool ? "Zone airflow preview will appear when adaptive has a plan" : "Dry and Fan keep thermal and air-quality previews separate"),
-      fields: [
-        adaptiveMetric("Control Temperature", heatCool && selectedThermostat.current !== null ? tempText(selectedThermostat.current) : "-"),
-        adaptiveMetric("Zone Airflow", activePlan || "-"),
-        adaptiveMetric("Strategy", title(strategy)),
-        adaptiveMetric("Outside Air Zones", (adaptiveConfig.outside_air_zones || []).length || "-")
-      ]
-    };
-  }
-
-  function modelBadges(zone = {}) {
-    return [
-      adaptiveMetric("Progress", zone.learning_progress === undefined ? "-" : percentText(Number(zone.learning_progress) * 100)),
-      adaptiveMetric("Samples", `${zone.passive_samples || zone.idle_samples || 0}/${zone.active_samples || 0}`),
-      adaptiveMetric("Updates", zone.ekf_updates ?? "-"),
-      adaptiveMetric("Confidence", zone.confidence === undefined ? "-" : percentText(Number(zone.confidence) * 100)),
-      adaptiveMetric("Error", zone.prediction_std === undefined ? "-" : tempText(zone.prediction_std, 2)),
-      adaptiveMetric("Drift", zone.passive_drift_per_hour === undefined ? "-" : `${tempText(zone.passive_drift_per_hour, 2)}/h`),
-      adaptiveMetric("Response", zone.active_response_per_hour === undefined ? "-" : `${tempText(zone.active_response_per_hour, 2)}/h`),
-      adaptiveMetric("Outside", zone.outside_coupling_per_hour === undefined ? "-" : `${tempText(zone.outside_coupling_per_hour, 2)}/h`)
-    ];
   }
 
   function sensorRowsFromState() {
@@ -979,13 +865,8 @@
   $: balanceRows = Object.fromEntries(((system.balance?.zones || [])).map((zone) => [String(zone.zone), zone]));
   $: alerts = (snapshot, acEntries, collectAlerts());
   $: adaptive = integrations.adaptive || {};
+  $: adaptiveUi = adaptive.ui || {};
   $: adaptiveConfig = controller.config?.adaptive || {};
-  $: adaptiveLearningZones = adaptive.learning?.zones || {};
-  $: adaptiveReadyCount = Object.values(adaptiveLearningZones).filter((zone) => zone?.mpc_ready === true).length;
-  $: adaptiveLearningCount = Object.values(adaptiveLearningZones).filter((zone) => zone?.learn === true).length;
-  $: adaptiveEnvironment = environmentIntent();
-  $: adaptiveZoneIntent = zoneIntent();
-  $: adaptiveHybridIntent = hybridIntent();
   $: serviceViews = showSupportDiagnostics ? [...BASE_SERVICE_VIEWS, SUPPORT_SERVICE_VIEW] : BASE_SERVICE_VIEWS;
   $: if (activeServiceView === "spill") activeServiceView = "ac-setup";
   $: if (activeServiceView === "general" || activeServiceView === "parameters") activeServiceView = "app";
@@ -1079,24 +960,13 @@
       <AdaptiveView
         options={ADAPTIVE_VIEWS}
         {activeAdaptiveView}
-        {adaptive}
+        {adaptiveUi}
         {adaptiveConfig}
-        {adaptiveEnvironment}
-        {adaptiveZoneIntent}
-        {adaptiveHybridIntent}
-        {adaptiveReadyCount}
-        {adaptiveLearningCount}
-        {adaptiveLearningZones}
         {groupEntries}
         {selectedZones}
         {pendingKey}
-        {adaptiveHeadline}
-        {adaptiveReason}
-        {adaptiveMetric}
-        {adaptiveOwnership}
         {groupIsSpill}
         {zoneName}
-        {modelBadges}
         onView={(view) => activeAdaptiveView = view}
         onSaveConfig={sendAdaptiveConfig}
         onModelAction={sendAdaptiveModelAction}

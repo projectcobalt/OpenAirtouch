@@ -1,27 +1,16 @@
 <script>
   import Subnav from "../components/Subnav.svelte";
-  import { tempText, title } from "../lib/format.js";
+  import { title } from "../lib/format.js";
 
   export let options = [];
   export let activeAdaptiveView = "status";
-  export let adaptive = {};
+  export let adaptiveUi = {};
   export let adaptiveConfig = {};
-  export let adaptiveEnvironment = {};
-  export let adaptiveZoneIntent = {};
-  export let adaptiveHybridIntent = {};
-  export let adaptiveReadyCount = 0;
-  export let adaptiveLearningCount = 0;
-  export let adaptiveLearningZones = {};
   export let groupEntries = [];
   export let selectedZones = [];
   export let pendingKey = "";
-  export let adaptiveHeadline = () => "Adaptive";
-  export let adaptiveReason = () => "";
-  export let adaptiveMetric = (label, value) => ({label, value});
-  export let adaptiveOwnership = () => "-";
   export let groupIsSpill = () => false;
   export let zoneName = (id) => `Zone ${Number(id) + 1}`;
-  export let modelBadges = () => [];
   export let onView = () => {};
   export let onSaveConfig = () => {};
   export let onModelAction = () => {};
@@ -60,51 +49,104 @@
     const forecastEntries = future.length ? future : inferredForecast.map((point) => ({...point}));
     const values = [...actual, ...forecastEntries].map((point) => point.value);
     if (values.length < 2) {
-      return {hasData: false, actualPath: "", forecastPath: "", label: `${actual.length + forecastEntries.length} points`};
+      return {hasData: false, actualPath: "", forecastPath: ""};
     }
     const domain = [Math.min(...values), Math.max(...values)];
     const total = actual.length + forecastEntries.length;
     const actualPath = chartPath(actual, domain, 0, total);
     const forecastPath = chartPath(forecastEntries, domain, Math.max(0, actual.length - 1), total);
-    const latestActual = actual.at(-1)?.value;
-    const latestForecast = forecastEntries.at(-1)?.value;
     return {
       hasData: !!(actualPath || forecastPath),
       actualPath,
-      forecastPath,
-      label: `${latestActual === undefined ? "-" : tempText(latestActual)} -> ${latestForecast === undefined ? "-" : tempText(latestForecast)}`
+      forecastPath
     };
   }
-  const zoneIdSet = (value) => {
-    if (Array.isArray(value)) return new Set(value.map(Number).filter(Number.isFinite));
-    if (value && typeof value === "object") return new Set(Object.keys(value).map(Number).filter(Number.isFinite));
-    return new Set();
+  const surfaceActive = (label, strategy) => (
+    (label === "Environment" && strategy === "weather")
+    || (label === "Zone" && strategy === "zone")
+    || (label === "Hybrid" && strategy === "hybrid")
+  );
+  const requiredSurfaces = ["environment", "zone", "hybrid"];
+  const contractIssues = (ui = {}) => {
+    const issues = [];
+    if (!ui || typeof ui !== "object") return ["adaptive.ui is missing"];
+    if (ui.version !== 1) issues.push("adaptive.ui.version must be 1");
+    const summary = ui.summary;
+    if (!summary || typeof summary !== "object") {
+      issues.push("adaptive.ui.summary is missing");
+    } else {
+      for (const key of ["headline", "detail", "authority", "mode", "strategy", "intent"]) {
+        if (summary[key] === undefined || summary[key] === null || summary[key] === "") issues.push(`adaptive.ui.summary.${key} is missing`);
+      }
+    }
+    const surfaces = ui.surfaces;
+    if (!surfaces || typeof surfaces !== "object") {
+      issues.push("adaptive.ui.surfaces is missing");
+    } else {
+      for (const key of requiredSurfaces) {
+        const surface = surfaces[key];
+        if (!surface || typeof surface !== "object") {
+          issues.push(`adaptive.ui.surfaces.${key} is missing`);
+          continue;
+        }
+        for (const field of ["headline", "detail", "state"]) {
+          if (surface[field] === undefined || surface[field] === null || surface[field] === "") issues.push(`adaptive.ui.surfaces.${key}.${field} is missing`);
+        }
+        if (!Array.isArray(surface.fields)) issues.push(`adaptive.ui.surfaces.${key}.fields must be an array`);
+      }
+    }
+    if (!Array.isArray(ui.metrics) || !ui.metrics.length) {
+      issues.push("adaptive.ui.metrics must be a non-empty array");
+    } else {
+      ui.metrics.forEach((metric, index) => {
+        if (!metric || typeof metric !== "object") {
+          issues.push(`adaptive.ui.metrics[${index}] is not an object`);
+          return;
+        }
+        if (!metric.label) issues.push(`adaptive.ui.metrics[${index}].label is missing`);
+        if (metric.value === undefined || metric.value === null || metric.value === "") issues.push(`adaptive.ui.metrics[${index}].value is missing`);
+      });
+    }
+    const analytics = ui.analytics;
+    if (!analytics || typeof analytics !== "object") {
+      issues.push("adaptive.ui.analytics is missing");
+    } else if (!Array.isArray(analytics.zones)) {
+      issues.push("adaptive.ui.analytics.zones must be an array");
+    } else {
+      analytics.zones.forEach((zone, index) => {
+        if (!zone || typeof zone !== "object") {
+          issues.push(`adaptive.ui.analytics.zones[${index}] is not an object`);
+          return;
+        }
+        for (const key of ["id", "state", "flags", "badges", "series"]) {
+          if (zone[key] === undefined || zone[key] === null) issues.push(`adaptive.ui.analytics.zones[${index}].${key} is missing`);
+        }
+        if (!Array.isArray(zone.flags)) issues.push(`adaptive.ui.analytics.zones[${index}].flags must be an array`);
+        if (!Array.isArray(zone.badges)) issues.push(`adaptive.ui.analytics.zones[${index}].badges must be an array`);
+        if (!zone.series || typeof zone.series !== "object") return;
+        if (!Array.isArray(zone.series.history)) issues.push(`adaptive.ui.analytics.zones[${index}].series.history must be an array`);
+        if (!Array.isArray(zone.series.forecast)) issues.push(`adaptive.ui.analytics.zones[${index}].series.forecast must be an array`);
+        if (zone.series.label === undefined || zone.series.label === null) issues.push(`adaptive.ui.analytics.zones[${index}].series.label is missing`);
+        if (zone.series.meta === undefined || zone.series.meta === null) issues.push(`adaptive.ui.analytics.zones[${index}].series.meta is missing`);
+      });
+    }
+    return issues;
   };
-  const zoneInSet = (set, id) => set.has(Number(id));
-  function analyticsZoneVisible(id, group) {
-    const hasSensor = group.status?.has_sensor === true;
-    if (hasSensor) return true;
-    if (activeStrategy === "hybrid") return zoneInSet(controlZoneIds, id) || zoneInSet(activeDamperZoneIds, id);
-    if (activeStrategy === "zone") return zoneInSet(controlZoneIds, id) || zoneInSet(activeSetpointZoneIds, id);
-    return false;
-  }
-  function analyticsZoneState(id, group, learningZone = {}) {
-    if (learningZone.last_skip_reason) return title(learningZone.last_skip_reason);
-    if (learningZone.mpc_ready) return "Ready";
-    if (group.status?.has_sensor) return "Learning";
-    if (activeStrategy === "hybrid" && zoneInSet(activeDamperZoneIds, id)) return "Damper Active";
-    if (zoneInSet(controlZoneIds, id)) return "Control Zone";
-    return "No Temperature Sensor";
-  }
 
+  $: uiSummary = adaptiveUi.summary || {};
+  $: uiSurfaces = adaptiveUi.surfaces || {};
+  $: contractErrors = contractIssues(adaptiveUi);
+  $: contractReady = contractErrors.length === 0;
   $: zoneEntries = selectedZones.length ? selectedZones : groupEntries.filter(([_id, group]) => !groupIsSpill(group));
-  $: activeMode = adaptive.mode || adaptiveConfig.mode || "off";
-  $: activeStrategy = adaptiveConfig.control_strategy || "weather";
-  $: controlZoneIds = zoneIdSet(adaptiveConfig.control_zones || []);
-  $: activeSetpointZoneIds = zoneIdSet(adaptive.active_groups || []);
-  $: activeDamperZoneIds = zoneIdSet(adaptive.active_dampers || []);
-  $: analyticsZoneEntries = zoneEntries.filter(([id, group]) => analyticsZoneVisible(id, group));
-  $: activeControlCount = (adaptive.active_groups || []).length || (adaptive.active_dampers || []).length;
+  $: activeMode = uiSummary.mode;
+  $: activeStrategy = uiSummary.strategy;
+  $: surfaceCards = [
+    ["Environment", uiSurfaces.environment],
+    ["Zone", uiSurfaces.zone],
+    ["Hybrid", uiSurfaces.hybrid]
+  ];
+  $: statusItems = Array.isArray(adaptiveUi.metrics) ? adaptiveUi.metrics : [];
+  $: analyticsZones = Array.isArray(adaptiveUi.analytics?.zones) ? adaptiveUi.analytics.zones : [];
 </script>
 
 <section class="cards-view">
@@ -113,52 +155,60 @@
 
   {#if activeAdaptiveView === "status"}
     <div class="page-kicker">Current Intent</div>
-    <div class="intent-card">
-      <div>
-        <strong>{adaptiveHeadline()}</strong>
-        <p>{adaptiveReason()}</p>
+    {#if !contractReady}
+      <div class="intent-card contract-error-card">
+        <div>
+          <strong>Adaptive UI Contract Missing</strong>
+          <p>The backend did not provide the required adaptive.ui contract for this page.</p>
+        </div>
+        <div class="model-badge-grid compact">
+          {#each contractErrors as issue}
+            <span class="model-badge"><b>Missing</b>{issue}</span>
+          {/each}
+        </div>
       </div>
-      <div class="pill-row-inline">
-        <span>{title(activeMode)}</span>
-        <span>{title(activeStrategy)}</span>
-        {#if adaptive.weather_intent?.outside_air_intent || adaptive.mode_intent?.outside_air_intent}<span>Fresh Air</span>{/if}
-        {#if adaptive.weather_intent?.pause_active}<span>Paused</span>{/if}
+    {:else}
+      <div class="intent-card">
+        <div>
+          <strong>{uiSummary.headline}</strong>
+          <p>{uiSummary.detail}</p>
+        </div>
+        <div class="pill-row-inline">
+          <span>{title(activeMode)}</span>
+          <span>{title(activeStrategy)}</span>
+          <span>{title(uiSummary.intent)}</span>
+          <span>{title(uiSummary.authority)}</span>
+        </div>
       </div>
-    </div>
-    <div class="adaptive-surface-grid">
-      {#each [["Environment", adaptiveEnvironment], ["Zone", adaptiveZoneIntent], ["Hybrid", adaptiveHybridIntent]] as [label, surface]}
-        <article
-          class="summary-card adaptive-surface-card"
-          class:active-surface={(label === "Environment" && activeStrategy === "weather") || (label === "Zone" && activeStrategy === "zone") || (label === "Hybrid" && activeStrategy === "hybrid")}
-          data-adaptive-surface={label}
-        >
-          <div class="card-head">
-            <div>
-              <div class="hero-kicker">{label}</div>
-              <div class="card-title">{surface.headline}</div>
+      <div class="adaptive-surface-grid">
+        {#each surfaceCards as [label, surface]}
+          <article
+            class="summary-card adaptive-surface-card"
+            class:active-surface={surfaceActive(label, activeStrategy)}
+            data-adaptive-surface={label}
+          >
+            <div class="card-head">
+              <div>
+                <div class="hero-kicker">{label}</div>
+                <div class="card-title">{surface.headline}</div>
+              </div>
+              <span class:selected-pill={surfaceActive(label, activeStrategy)}>{label}</span>
             </div>
-            <span class:selected-pill={(label === "Environment" && activeStrategy === "weather") || (label === "Zone" && activeStrategy === "zone") || (label === "Hybrid" && activeStrategy === "hybrid")}>{label}</span>
-          </div>
-          <div class="hero-detail">{surface.summary}</div>
-          <div class="model-badge-grid compact">
-            {#each surface.fields as field}
-              <span class="model-badge"><b>{field.label}</b>{field.value}</span>
-            {/each}
-          </div>
-        </article>
-      {/each}
-    </div>
-    <div class="summary-grid adaptive-status-strip">
-      {#each [
-        adaptiveMetric("Authority", title(activeMode)),
-        adaptiveMetric("Learning", `${adaptiveReadyCount} ready / ${adaptiveLearningCount} learning`),
-        adaptiveMetric("Control", activeControlCount ? `${activeControlCount} active changes` : "Idle"),
-        adaptiveMetric("Compressor", adaptive.compressor?.guard || adaptive.compressor?.state || "Idle"),
-        adaptiveMetric("Ownership", adaptiveOwnership())
-      ] as item}
-        <article class="summary-card metric-card"><span>{item.label}</span><strong>{item.value}</strong></article>
-      {/each}
-    </div>
+            <div class="hero-detail">{surface.detail}</div>
+            <div class="model-badge-grid compact">
+              {#each surface.fields as field}
+                <span class="model-badge"><b>{field.label}</b>{field.value}</span>
+              {/each}
+            </div>
+          </article>
+        {/each}
+      </div>
+      <div class="summary-grid adaptive-status-strip">
+        {#each statusItems as item}
+          <article class="summary-card metric-card"><span>{item.label}</span><strong>{item.value}</strong></article>
+        {/each}
+      </div>
+    {/if}
   {:else if activeAdaptiveView === "config"}
     <div class="card-grid" data-adaptive-config>
       <article class="summary-card editor-card adaptive-config-card">
@@ -209,23 +259,33 @@
       </article>
     </div>
   {:else}
-    <div class="analytics-list">
-      {#each analyticsZoneEntries as [id, group]}
-        {@const learningZone = adaptiveLearningZones[String(id)] || {}}
-        {@const history = adaptive.learning?.analytics?.[String(id)] || adaptive.learning?.analytics?.[Number(id)] || []}
-        {@const forecast = adaptive.learning?.forecasts?.[String(id)] || adaptive.learning?.forecasts?.[Number(id)] || []}
-        {@const sparkline = adaptiveSparklineData(history, forecast)}
-        <article class="summary-card analytics-row" class:ready={learningZone.mpc_ready} class:learning={learningZone.learn}>
+    {#if !contractReady}
+      <div class="intent-card contract-error-card">
+        <div>
+          <strong>Adaptive UI Contract Missing</strong>
+          <p>The backend did not provide the required adaptive.ui analytics contract for this page.</p>
+        </div>
+        <div class="model-badge-grid compact">
+          {#each contractErrors as issue}
+            <span class="model-badge"><b>Missing</b>{issue}</span>
+          {/each}
+        </div>
+      </div>
+    {:else}
+      <div class="analytics-list">
+      {#each analyticsZones as zone}
+        {@const id = zone.id}
+        {@const sparkline = adaptiveSparklineData(zone.series.history, zone.series.forecast)}
+        <article class="summary-card analytics-row" class:ready={zone.ready} class:learning={zone.learning}>
           <div class="analytics-row-status">
             <div>
-              <div class="card-title">{zoneName(id, group)}</div>
-              <div class="hero-detail">{analyticsZoneState(id, group, learningZone)}</div>
+              <div class="card-title">{zoneName(id)}</div>
+              <div class="hero-detail">{zone.state}</div>
             </div>
             <div class="pill-row-inline">
-              {#if zoneInSet(controlZoneIds, id)}<span>Control</span>{/if}
-              {#if zoneInSet(activeDamperZoneIds, id)}<span>Damper</span>{/if}
-              {#if learningZone.mpc_ready}<span>Ready</span>{/if}
-              {#if learningZone.learn}<span>Learning</span>{/if}
+              {#each zone.flags as flag}
+                <span>{flag}</span>
+              {/each}
             </div>
           </div>
           <div class="analytics-sparkline">
@@ -235,19 +295,20 @@
               {#if sparkline.actualPath}<path d={sparkline.actualPath}></path>{/if}
               {#if sparkline.forecastPath}<path class="prediction-line" d={sparkline.forecastPath}></path>{/if}
             </svg>
-            <div class="analytics-sparkline-meta"><span>History / Now / Forecast</span><span>{sparkline.hasData ? sparkline.label : "No chart data"}</span></div>
+            <div class="analytics-sparkline-meta"><span>{zone.series.meta}</span><span>{sparkline.hasData ? zone.series.label : "No chart data"}</span></div>
           </div>
           <div class="model-badge-grid">
-            {#each modelBadges(learningZone).slice(0, 6) as badge}
+            {#each zone.badges.slice(0, 6) as badge}
               <span class="model-badge"><b>{badge.label}</b>{badge.value}</span>
             {/each}
           </div>
           <div class="service-actions">
-            <button type="button" disabled={pendingKey === `adaptive-model-accelerate_zone-${id}`} on:click={() => onModelAction("accelerate_zone", Number(id))}>{learningZone.accelerated_learning ? "Normal" : "Fast"}</button>
+            <button type="button" disabled={pendingKey === `adaptive-model-accelerate_zone-${id}`} on:click={() => onModelAction("accelerate_zone", Number(id))}>{zone.accelerated_learning ? "Normal" : "Fast"}</button>
             <button type="button" class="action-danger" disabled={pendingKey === `adaptive-model-reset_zone-${id}`} on:click={() => onModelAction("reset_zone", Number(id))}>Reset</button>
           </div>
         </article>
       {/each}
     </div>
+    {/if}
   {/if}
 </section>
