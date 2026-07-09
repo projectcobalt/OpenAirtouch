@@ -33,6 +33,7 @@ from .event_log import event_record as _event_record
 from .event_log import frame_log_line as _frame_log_line
 from .ha_client import HomeAssistantApiConfig
 from .integrations import HomeAssistantIntegrationPoller
+from .runtime_host import RuntimeHost, RuntimeHostConfig
 from .transport_factory import TransportFactory, build_transport_factory
 from .touchpad_temperature import TouchpadTemperatureResult, resolve_touchpad_temperature
 
@@ -73,9 +74,6 @@ class RuntimeController:
         self.config = config
         self._transport_factory = transport_factory or self._default_transport_factory
         self._lock = threading.RLock()
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._runtime: AirTouchRuntime | None = None
         self._events = EventHistory(config.event_history)
         self._command_queue = RuntimeCommandQueue()
         self._status = "stopped"
@@ -99,27 +97,39 @@ class RuntimeController:
         self._next_datetime_sync = 0.0
         self._last_datetime_sync: dict[str, Any] | None = None
         self._datetime_sync_error: str | None = None
+        self._host = RuntimeHost(
+            config=RuntimeHostConfig(
+                bus_log=config.bus_log,
+                loop_sleep=config.loop_sleep,
+                reconnect_interval=config.reconnect_interval,
+            ),
+            transport_factory=self._transport_factory,
+            command_queue=self._command_queue,
+            runtime_config=lambda: self._runtime_config,
+            on_runtime_started=self._set_runtime,
+            on_status=self._set_status,
+            on_event=self._record_event,
+            on_tick=self._runtime_tick,
+            on_error=self._record_controller_error,
+            on_stopped=self._mark_stopped,
+        )
 
     def start(self) -> None:
         with self._lock:
-            if self._thread is not None and self._thread.is_alive():
+            if self._host.thread_alive:
                 return
-            self._stop.clear()
-            self._thread = threading.Thread(target=self._run, name="airtouch-runtime", daemon=True)
-            self._thread.start()
+            self._host.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        self._stop.set()
-        thread = self._thread
-        if thread is not None:
-            thread.join(timeout)
+        self._host.stop(timeout)
 
     def enqueue(self, spec: TransactionSpec) -> dict[str, Any]:
         return self._command_queue.enqueue(spec)
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            runtime_snapshot = None if self._runtime is None else self._runtime.snapshot()
+            runtime = self._host.runtime
+            runtime_snapshot = None if runtime is None else runtime.snapshot()
             if runtime_snapshot is not None:
                 _add_error_displays(runtime_snapshot, self._error_resolver)
             integrations = self._integrations.snapshot()
@@ -132,7 +142,7 @@ class RuntimeController:
                 "controller": {
                     "status": self._status,
                     "error": self._error,
-                    "thread_alive": self._thread is not None and self._thread.is_alive(),
+                    "thread_alive": self._host.thread_alive,
                     "config": self.public_config(),
                     "datetime_sync": self._datetime_sync_status(runtime_snapshot),
                 },
@@ -229,40 +239,29 @@ class RuntimeController:
             self._mark_changed_locked()
             return learning
 
-    def _run(self) -> None:
-        while not self._stop.is_set():
-            with self._lock:
-                self._status = "starting" if self._runtime is None else "reconnecting"
-                self._mark_changed_locked()
-            try:
-                with self._transport_factory() as transport, JsonlBusLogger(self.config.bus_log) as logger:
-                    runtime = AirTouchRuntime(transport, self._runtime_config)
-                    with self._lock:
-                        self._runtime = runtime
-                        self._status = "running"
-                        self._error = None
-                        self._mark_changed_locked()
-                    for event in runtime.start():
-                        self._record_event(event, logger)
-                    while not self._stop.is_set():
-                        self._drain_commands(runtime)
-                        for event in runtime.step():
-                            self._record_event(event, logger)
-                        self._poll_weather()
-                        self._run_adaptive(runtime)
-                        self._update_touchpad_temperature(runtime)
-                        self._sync_datetime_if_due(runtime)
-                        time.sleep(self.config.loop_sleep)
-            except Exception as exc:  # pragma: no cover - exercised in live runs
-                self._record_controller_error(exc)
-                self._sleep_before_reconnect()
+    def _drain_commands(self, runtime: AirTouchRuntime) -> None:
+        self._command_queue.drain_into(runtime)
+
+    def _set_runtime(self, runtime: AirTouchRuntime) -> None:
+        self._mark_changed_locked()
+
+    def _set_status(self, status: str, error: str | None) -> None:
+        with self._lock:
+            self._status = status
+            self._error = error
+            self._mark_changed_locked()
+
+    def _mark_stopped(self) -> None:
         with self._lock:
             self._status = "stopped"
             self._mark_changed_locked()
         self._error_resolver.stop()
 
-    def _drain_commands(self, runtime: AirTouchRuntime) -> None:
-        self._command_queue.drain_into(runtime)
+    def _runtime_tick(self, runtime: AirTouchRuntime, _bus_logger: JsonlBusLogger) -> None:
+        self._poll_weather()
+        self._run_adaptive(runtime)
+        self._update_touchpad_temperature(runtime)
+        self._sync_datetime_if_due(runtime)
 
     def _record_event(self, event: RuntimeEvent, bus_logger: JsonlBusLogger) -> None:
         record = _event_record(event)
@@ -411,11 +410,6 @@ class RuntimeController:
             return
         self._next_adaptive_learning_save = time.monotonic() + 60.0
         _save_adaptive_learning(self._adaptive_learning_path, self._adaptive.export_learning())
-
-    def _sleep_before_reconnect(self) -> None:
-        deadline = time.monotonic() + max(0.1, self.config.reconnect_interval)
-        while not self._stop.is_set() and time.monotonic() < deadline:
-            time.sleep(min(0.2, deadline - time.monotonic()))
 
     def _default_transport_factory(self) -> AbstractContextManager[TransportLike]:
         return build_transport_factory(
