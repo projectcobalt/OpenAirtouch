@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--tcp-host", default="127.0.0.1", help="TCP serial bridge host when --transport tcp_serial is used.")
     parser.add_argument("--tcp-port", type=int, default=6638, help="TCP serial bridge port when --transport tcp_serial is used.")
+    parser.add_argument("--protocol", default="auto", choices=("auto", "at4", "at5"), help="Runtime protocol mode. Default detects once at boot.")
     parser.add_argument("--reconnect-interval", type=float, default=5.0, help="Seconds to wait before reconnecting after transport errors.")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind host. Default: 0.0.0.0.")
     parser.add_argument("--http-port", type=int, default=8099, help="HTTP bind port. Default matches HA ingress convention.")
@@ -86,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         detect_seconds=args.detect_seconds,
         heartbeat_interval=args.heartbeat_interval,
         init_transactions=True,
+        protocol=args.protocol,
     )
     controller = RuntimeController(
         RuntimeControllerConfig(
