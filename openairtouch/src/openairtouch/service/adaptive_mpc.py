@@ -689,7 +689,9 @@ class AdaptiveMpcEngine:
         controlled: list[tuple[AdaptiveRoom, ZoneThermalModel, float]] = []
         for room in rooms:
             control_allowed = room.configured_control if advisory else room.control_enabled
-            if not room.active or not control_allowed:
+            if not control_allowed:
+                continue
+            if not room.active and inputs.target_policy != "room_setpoint":
                 continue
             model = self.zone_models.get(room.id)
             if room.temperature is None or model is None:
@@ -971,7 +973,11 @@ def _runtime_forecast(
             point["control_temperature"] = round(control_temperature, 2)
         series.append(point)
     runtime_minutes = round(len(active_blocks) * PLAN_DT_MINUTES, 1)
-    telemetry_quality = _telemetry_forecast_quality(inputs.input_quality.get("telemetry"), series)
+    telemetry_quality = _telemetry_forecast_quality(
+        inputs.input_quality.get("telemetry"),
+        series,
+        inputs.input_quality.get("airtouch_zone_calls"),
+    )
     quality = {
         "status": "ok" if ready else "warming_up",
         "model_ready": ready,
@@ -992,7 +998,7 @@ def _runtime_forecast(
     )
 
 
-def _telemetry_forecast_quality(telemetry: Any, series: list[dict[str, Any]]) -> dict[str, Any]:
+def _telemetry_forecast_quality(telemetry: Any, series: list[dict[str, Any]], zone_calls: Any = None) -> dict[str, Any]:
     if not isinstance(telemetry, dict) or not telemetry.get("available"):
         return {
             "forecast_confidence": None,
@@ -1011,6 +1017,14 @@ def _telemetry_forecast_quality(telemetry: Any, series: list[dict[str, Any]]) ->
             "telemetry_evidence": evidence,
         }
     agreement = observed is planned_conditioning
+    if planned_conditioning and observed is False and _waiting_for_zone_call(zone_calls):
+        return {
+            "forecast_confidence": round(base_confidence, 3),
+            "telemetry_agreement": "waiting_for_zone_call",
+            "telemetry_evidence": evidence,
+            "telemetry_observed_conditioning": observed,
+            "telemetry_planned_conditioning": planned_conditioning,
+        }
     return {
         "forecast_confidence": round(
             base_confidence if agreement else base_confidence * TELEMETRY_DISAGREE_CONFIDENCE_FACTOR,
@@ -1021,6 +1035,13 @@ def _telemetry_forecast_quality(telemetry: Any, series: list[dict[str, Any]]) ->
         "telemetry_observed_conditioning": observed,
         "telemetry_planned_conditioning": planned_conditioning,
     }
+
+
+def _waiting_for_zone_call(zone_calls: Any) -> bool:
+    if not isinstance(zone_calls, dict):
+        return False
+    states = [item.get("state") for item in zone_calls.values() if isinstance(item, dict)]
+    return "waiting_for_call_threshold" in states and "calling" not in states
 
 
 def _runtime_windows(series: list[dict[str, Any]]) -> list[dict[str, Any]]:

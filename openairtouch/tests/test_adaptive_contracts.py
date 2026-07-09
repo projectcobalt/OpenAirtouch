@@ -10,16 +10,19 @@ from tests.test_adaptive import integrations, ready_heating_model, runtime_state
 class AdaptiveContractTests(unittest.TestCase):
     def test_command_intent_keeps_protocol_request_neutral(self) -> None:
         intent = AdaptiveCommandIntent(
-            action="group_percentage",
+            intent="set_zone_damper",
             data={"group": 0, "percentage": 65},
             surface="zone",
             reason="hybrid damper plan",
+            transaction_action="group_percentage",
+            transaction_data={"group": 0, "percentage": 65},
             restore_key="group:0:percentage",
             expected_value=65,
         )
 
         self.assertEqual(intent.as_transaction_request(), {"action": "group_percentage", "data": {"group": 0, "percentage": 65}})
-        self.assertEqual(intent.as_status()["action"], "group_percentage")
+        self.assertEqual(intent.as_status()["intent"], "set_zone_damper")
+        self.assertEqual(intent.as_status()["transaction"]["action"], "group_percentage")
         self.assertEqual(intent.as_status()["expected_value"], 65)
         self.assertEqual(intent.surface, "zone")
         self.assertEqual(intent.restore_key, "group:0:percentage")
@@ -195,7 +198,8 @@ class AdaptiveContractTests(unittest.TestCase):
         ui = controller.status()["ui"]
         self.assertEqual(ui["summary"]["intent"], "turn_off")
         self.assertEqual(ui["surfaces"]["environment"]["fields"][0]["raw"], 20.0)
-        self.assertEqual(ui["commands"]["command_intents"][0]["action"], "ac_status")
+        self.assertEqual(ui["commands"]["command_intents"][0]["intent"], "set_ac_power")
+        self.assertEqual(ui["commands"]["command_intents"][0]["transaction"]["action"], "ac_status")
 
     def test_controller_status_includes_hybrid_ui_contract(self) -> None:
         controller = AdaptiveController(

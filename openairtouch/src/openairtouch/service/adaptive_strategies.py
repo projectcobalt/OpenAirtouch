@@ -28,6 +28,7 @@ from .adaptive_signals import (
     _indoor_allows_relax,
     _weather_opportunity,
 )
+from .adaptive_zone_call import zone_call_status
 
 
 TOUCHPAD_2_SENSOR = 0x91
@@ -43,19 +44,20 @@ class AdaptiveStrategyMixin:
         solar: SolarSignal,
         telemetry: AcTelemetrySignal,
         climate: ClimateSignal,
-        mode_intent: AcModeIntent,
+        thermal_intent: Any,
         status: dict[str, Any],
     ) -> None:
+        mode_intent = thermal_intent.mode_intent
         ac_status = ac.get("status") or {}
         setpoint = _number(ac_status.get("setpoint"))
-        cooling = mode_intent.mode != 1
+        cooling = thermal_intent.cooling if thermal_intent.cooling is not None else mode_intent.mode != 1
         opportunity_cooling = _cooling_for_mode(mode_intent.current_mode, default=cooling)
         opportunity = _weather_opportunity(outside, setpoint, opportunity_cooling, weather, climate)
         target: int | None = None
         forecast_target: int | None = None
         proposal = None
         if strategy_uses_mpc(self.config.control_strategy) and mode_intent.mode in (1, 4):
-            target = self._control_target(device, ac, outside, weather, climate, cooling)
+            target = thermal_intent.setpoint
             proposal = self._mpc_proposal(device, target, cooling, outside, weather, solar, telemetry, climate, advisory=True)
         hybrid_status = None
         if self.config.control_strategy == "hybrid" and target is not None:
@@ -69,6 +71,7 @@ class AdaptiveStrategyMixin:
             mode_intent=mode_intent,
             air_quality=self._air_quality_status(device, climate, mode_intent),
             outside_air=self._outside_air_status(mode_intent),
+            zone_call_state=zone_call_status(device.rooms, thermal_intent.cooling),
             proposal=proposal,
             hybrid=hybrid_status,
             solar=solar,
@@ -100,11 +103,12 @@ class AdaptiveStrategyMixin:
         outside: float,
         weather: WeatherSignal,
         climate: ClimateSignal,
-        mode_intent: AcModeIntent,
+        thermal_intent: Any,
         status: dict[str, Any],
         now: float,
         planned_power_off: set[int],
     ) -> list[TransactionSpec]:
+        mode_intent = thermal_intent.mode_intent
         ac_status = ac.get("status") or {}
         setpoint = _number(ac_status.get("setpoint"))
         if setpoint is None:
@@ -209,23 +213,25 @@ class AdaptiveStrategyMixin:
         solar: SolarSignal,
         telemetry: AcTelemetrySignal,
         climate: ClimateSignal,
-        mode_intent: AcModeIntent,
+        thermal_intent: Any,
         status: dict[str, Any],
         now: float,
     ) -> list[TransactionSpec]:
+        mode_intent = thermal_intent.mode_intent
         specs: list[TransactionSpec] = []
         ac_id = device.ac_id
         ac_status = ac.get("status") or {}
-        cooling = mode_intent.mode != 1
+        cooling = thermal_intent.cooling if thermal_intent.cooling is not None else mode_intent.mode != 1
         forecast_target = None
-        target = self._control_target(device, ac, outside, weather, climate, cooling)
+        target = thermal_intent.setpoint
+        if target is None:
+            target = self._control_target(device, ac, outside, weather, climate, cooling)
         groups = _groups_for_ac(state, ac_id, ac)
-        controlled_rooms = tuple(room for room in device.rooms if room.active and room.control_enabled and room.temperature is not None)
+        controlled_rooms = tuple(room for room in device.rooms if self._participating_room(room) and room.temperature is not None)
         controlled_group_ids = {room.id for room in controlled_rooms}
         proposal = self._mpc_proposal(device, target, cooling, outside, weather, solar, telemetry, climate) if mode_intent.mode in (1, 4) else None
         if proposal is not None:
             target = _clamp_setpoint(proposal.target, ac)
-        setpoint = _number(ac_status.get("setpoint"))
         name = _ac_name(ac_id, ac)
         status["evaluations"][-1].update(_zone_evaluation_status(
             target=target,
@@ -233,6 +239,7 @@ class AdaptiveStrategyMixin:
             mode_intent=mode_intent,
             air_quality=self._air_quality_status(device, climate, mode_intent),
             outside_air=self._outside_air_status(mode_intent),
+            zone_call_state=zone_call_status(device.rooms, thermal_intent.cooling),
             proposal=proposal,
             solar=solar,
             climate=climate,
@@ -251,6 +258,18 @@ class AdaptiveStrategyMixin:
             specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
             specs.extend(outside_air_specs)
             return specs
+        for group_id, group in groups:
+            if group_id not in controlled_group_ids:
+                continue
+            power_spec = self._set_group_power(state, group_id, True, status, now)
+            if power_spec is not None:
+                specs.append(power_spec)
+                status["actions"].append(f"{_group_name(group_id, group)}: Zone Turned On")
+        if controlled_group_ids and not device.power_on and self.config.allow_ac_power_on:
+            power_spec = self._send_ac_power(state, ac_id, True, status, now, key_prefix="zone_available")
+            if power_spec is not None:
+                specs.append(power_spec)
+                status["actions"].append(f"{name}: AC Made Available")
         mode_spec = self._set_ac_mode(state, ac_id, mode_intent, status, now)
         if mode_spec is not None:
             specs.append(mode_spec)
@@ -260,16 +279,11 @@ class AdaptiveStrategyMixin:
             specs.extend(outside_air_specs)
             return specs
         specs.extend(outside_air_specs)
-        if setpoint is not None and controlled_rooms and int(round(setpoint)) != target:
-            spec = self._set_ac_setpoint(state, ac_id, target, status, now)
-            if spec is not None:
-                specs.append(spec)
-                status["actions"].append(f"{name}: Setpoint Changed: {target}°")
-        else:
-            specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
+        specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
         for group_id, group in groups:
             group_status = group.get("status") or {}
             if group_id not in controlled_group_ids:
+                specs.extend(self._restore_group_power(state, group_id, status, now))
                 specs.extend(self._restore_group_setpoint(state, group_id, status, now))
                 continue
             group_setpoint = _number(group_status.get("setpoint"))
@@ -294,31 +308,44 @@ class AdaptiveStrategyMixin:
         solar: SolarSignal,
         telemetry: AcTelemetrySignal,
         climate: ClimateSignal,
-        mode_intent: AcModeIntent,
+        thermal_intent: Any,
         status: dict[str, Any],
         now: float,
     ) -> list[TransactionSpec]:
+        mode_intent = thermal_intent.mode_intent
         specs: list[TransactionSpec] = []
         ac_id = device.ac_id
         ac_status = ac.get("status") or {}
-        cooling = mode_intent.mode != 1
+        cooling = thermal_intent.cooling if thermal_intent.cooling is not None else mode_intent.mode != 1
         forecast_target = None
-        target = self._control_target(device, ac, outside, weather, climate, cooling)
+        target = thermal_intent.setpoint
+        if target is None:
+            target = self._control_target(device, ac, outside, weather, climate, cooling)
         proposal = self._mpc_proposal(device, target, cooling, outside, weather, solar, telemetry, climate) if mode_intent.mode in (1, 4) else None
         if proposal is not None:
             target = _clamp_setpoint(proposal.target, ac)
         name = _ac_name(ac_id, ac)
-        controlled_rooms = tuple(room for room in device.rooms if room.active and room.control_enabled and room.temperature is not None)
+        controlled_rooms = tuple(room for room in device.rooms if self._participating_room(room) and room.temperature is not None)
         controlled_group_ids = {room.id for room in controlled_rooms}
-        control_temperature = _hybrid_control_temperature(controlled_rooms, target, cooling, proposal.power_fraction if proposal else 0.0)
+        control_plan = _hybrid_control_plan(
+            controlled_rooms,
+            target,
+            cooling,
+            proposal.power_fraction if proposal else 0.0,
+            telemetry,
+            max_boost_degrees=self.config.hybrid_max_boost_degrees,
+        )
+        control_temperature = control_plan["control_temperature"]
         status["evaluations"][-1].update(_hybrid_evaluation_status(
             target=target,
             forecast_target=forecast_target,
             mode_intent=mode_intent,
             air_quality=self._air_quality_status(device, climate, mode_intent),
             outside_air=self._outside_air_status(mode_intent),
+            zone_call_state=zone_call_status(device.rooms, thermal_intent.cooling),
             proposal=proposal,
             control_temperature=control_temperature,
+            control_plan=control_plan,
             solar=solar,
             climate=climate,
             cooling=cooling,
@@ -353,19 +380,32 @@ class AdaptiveStrategyMixin:
             specs.extend(self._restore_dampers_for_ac(state, ac_id, ac, status, now))
             specs.extend(outside_air_specs)
             return specs
-        mode_spec = self._set_ac_mode(state, ac_id, mode_intent, status, now)
-        if mode_spec is not None:
-            specs.append(mode_spec)
-            status["actions"].append(f"{name}: Mode Changed: {mode_intent.name}")
-        setpoint = _number(ac_status.get("setpoint"))
-        if setpoint is not None and int(round(setpoint)) != target:
-            spec = self._set_ac_setpoint(state, ac_id, target, status, now)
+        groups = _groups_for_ac(state, ac_id, ac)
+        for group_id, group in groups:
+            if group_id not in controlled_group_ids:
+                specs.extend(self._restore_group_power(state, group_id, status, now))
+                if not (mode_intent.outside_air_intent and group_id in self.config.outside_air_zones):
+                    specs.extend(self._restore_group_percentage(state, group_id, status, now))
+                continue
+            power_spec = self._set_group_power(state, group_id, True, status, now)
+            if power_spec is not None:
+                specs.append(power_spec)
+                status["actions"].append(f"{_group_name(group_id, group)}: Zone Turned On")
+            group_status = group.get("status") or {}
+            current = _number(group_status.get("percentage"))
+            if current is None:
+                continue
+            percent = _hybrid_damper_percent(
+                proposal.zone_power_fractions.get(group_id, proposal.power_fraction),
+                minimum_percent=self.config.hybrid_min_damper_percent,
+                maximum_percent=self.config.hybrid_max_damper_percent,
+                idle_percent=self.config.hybrid_idle_damper_percent,
+            )
+            status["evaluations"][-1]["hybrid"]["damper_percentages"][str(group_id)] = percent
+            spec = self._set_group_percentage(state, group_id, percent, status, now)
             if spec is not None:
                 specs.append(spec)
-                status["actions"].append(f"{name}: Setpoint Changed: {target}°")
-        else:
-            specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
-
+                status["actions"].append(f"{_group_name(group_id, group)}: Damper Changed: {percent}%")
         control_sensor_spec = self._set_ac_control_sensor(state, ac_id, TOUCHPAD_2_SENSOR, status, now)
         if control_sensor_spec is not None:
             specs.append(control_sensor_spec)
@@ -381,30 +421,23 @@ class AdaptiveStrategyMixin:
             status["evaluations"][-1]["hybrid"]["touchpad_sensor"] = TOUCHPAD_2_SENSOR
         else:
             status["evaluations"][-1]["hybrid"]["touchpad_temperature_note"] = "No Controlled Zone Temperatures Available"
-
-        groups = _groups_for_ac(state, ac_id, ac)
-        for group_id, group in groups:
-            if group_id not in controlled_group_ids:
-                if not (mode_intent.outside_air_intent and group_id in self.config.outside_air_zones):
-                    specs.extend(self._restore_group_percentage(state, group_id, status, now))
-                continue
-            group_status = group.get("status") or {}
-            current = _number(group_status.get("percentage"))
-            if current is None:
-                continue
-            percent = _hybrid_damper_percent(
-                proposal.zone_power_fractions.get(group_id, proposal.power_fraction),
-                minimum_percent=self.config.hybrid_min_damper_percent,
-                maximum_percent=self.config.hybrid_max_damper_percent,
-                idle_percent=self.config.hybrid_idle_damper_percent,
-            )
-            status["evaluations"][-1]["hybrid"]["damper_percentages"][str(group_id)] = percent
-            if int(round(current)) == percent:
-                continue
-            spec = self._set_group_percentage(state, group_id, percent, status, now)
+        if controlled_group_ids and not device.power_on and self.config.allow_ac_power_on:
+            power_spec = self._send_ac_power(state, ac_id, True, status, now, key_prefix="hybrid_available")
+            if power_spec is not None:
+                specs.append(power_spec)
+                status["actions"].append(f"{name}: AC Made Available")
+        mode_spec = self._set_ac_mode(state, ac_id, mode_intent, status, now)
+        if mode_spec is not None:
+            specs.append(mode_spec)
+            status["actions"].append(f"{name}: Mode Changed: {mode_intent.name}")
+        setpoint = _number(ac_status.get("setpoint"))
+        if setpoint is not None and int(round(setpoint)) != target:
+            spec = self._set_ac_setpoint(state, ac_id, target, status, now)
             if spec is not None:
                 specs.append(spec)
-                status["actions"].append(f"{_group_name(group_id, group)}: Damper Changed: {percent}%")
+                status["actions"].append(f"{name}: Setpoint Changed: {target}°")
+        else:
+            specs.extend(self._restore_ac_setpoint(state, ac_id, status, now))
         specs.extend(outside_air_specs)
         return specs
 
@@ -418,8 +451,14 @@ class AdaptiveStrategyMixin:
         power_fraction = proposal.power_fraction if proposal is not None else 0.0
         status = {
             "strategy": "hybrid",
-            "control_temperature": _hybrid_control_temperature(controlled_rooms, target, cooling, power_fraction),
-            "control_temperature_source": "synthetic_weighted_zone_demand" if controlled_rooms else None,
+            **_hybrid_control_plan(
+                controlled_rooms,
+                target,
+                cooling,
+                power_fraction,
+                None,
+                max_boost_degrees=self.config.hybrid_max_boost_degrees,
+            ),
             "damper_percentages": {},
             "touchpad_temperature_commanded": False,
             "touchpad_temperature_note": "Recommend Mode Only",
@@ -447,16 +486,82 @@ def _hybrid_damper_percent(power_fraction: float, *, minimum_percent: int, maxim
     return _fraction_to_percent(damper)
 
 
-def _hybrid_control_temperature(rooms: tuple[Any, ...], target: int, cooling: bool, power_fraction: float) -> float | None:
-    temperatures = [(room.temperature, max(0.05, room.power_fraction)) for room in rooms if room.temperature is not None]
+def _hybrid_control_plan(
+    rooms: tuple[Any, ...],
+    target: int,
+    cooling: bool,
+    power_fraction: float,
+    telemetry: Any,
+    *,
+    max_boost_degrees: int,
+) -> dict[str, Any]:
+    temperatures = [float(room.temperature) for room in rooms if room.temperature is not None]
     if not temperatures:
+        return {
+            "control_temperature": None,
+            "control_temperature_source": None,
+            "control_temperature_base": None,
+            "comfort_delta": None,
+            "boost_degrees": 0,
+            "telemetry_work_fraction": None,
+        }
+    base = max(temperatures) if cooling else min(temperatures)
+    comfort_delta = max(0.0, base - target) if cooling else max(0.0, target - base)
+    planned_work = _clamp_fraction(power_fraction)
+    observed_work = _telemetry_work_fraction(telemetry)
+    boost = _hybrid_boost_degrees(comfort_delta, planned_work, observed_work, max_boost_degrees=max_boost_degrees)
+    synthetic = base + boost if cooling else base - boost
+    return {
+        "control_temperature": round(synthetic, 1),
+        "control_temperature_source": "worst_zone_temperature",
+        "control_temperature_base": round(base, 1),
+        "comfort_delta": round(comfort_delta, 1),
+        "boost_degrees": boost,
+        "telemetry_work_fraction": observed_work,
+    }
+
+
+def _hybrid_control_temperature(rooms: tuple[Any, ...], target: int, cooling: bool, power_fraction: float) -> float | None:
+    return _hybrid_control_plan(rooms, target, cooling, power_fraction, None, max_boost_degrees=2)["control_temperature"]
+
+
+def _hybrid_boost_degrees(comfort_delta: float, planned_work: float, observed_work: float | None, *, max_boost_degrees: int) -> int:
+    if comfort_delta < 0.5 or comfort_delta >= 3.0:
+        return 0
+    boost = 1 if planned_work >= 0.75 else 0
+    if planned_work >= 0.95 and comfort_delta <= 2.0:
+        boost = 2
+    if observed_work is not None:
+        shortfall = planned_work - observed_work
+        if shortfall >= 0.7:
+            boost = max(boost, 2)
+        elif shortfall >= 0.35:
+            boost = max(boost, 1)
+    return _clamp_int(boost, 0, max_boost_degrees)
+
+
+def _telemetry_work_fraction(telemetry: Any) -> float | None:
+    if telemetry is None or getattr(telemetry, "available", False) is not True:
         return None
-    total_weight = sum(weight for _temperature, weight in temperatures)
-    average = sum(temperature * weight for temperature, weight in temperatures) / total_weight
-    demand = min(1.0, max(0.0, float(power_fraction or 0.0)))
-    offset = demand * 2.0
-    synthetic = max(average, target + offset) if cooling else min(average, target - offset)
-    return round(synthetic, 1)
+    frequency = _number(getattr(telemetry, "frequency_hz", None))
+    if frequency is not None:
+        return round(_clamp_fraction(frequency / 100.0), 3)
+    power = _number(getattr(telemetry, "power_w", None))
+    if power is not None:
+        return round(_clamp_fraction((power - 120.0) / 1680.0), 3)
+    observed = getattr(telemetry, "observed_conditioning", None)
+    if observed is True:
+        return 0.5
+    if observed is False:
+        return 0.0
+    return None
+
+
+def _clamp_fraction(value: Any) -> float:
+    number = _number(value)
+    if number is None:
+        return 0.0
+    return max(0.0, min(1.0, float(number)))
 
 
 def _recommend_evaluation_status(
@@ -468,6 +573,7 @@ def _recommend_evaluation_status(
     mode_intent: Any,
     air_quality: dict[str, Any],
     outside_air: dict[str, Any],
+    zone_call_state: dict[str, Any],
     proposal: Any,
     hybrid: dict[str, Any] | None,
     solar: SolarSignal,
@@ -483,6 +589,7 @@ def _recommend_evaluation_status(
         "mode_intent": _mode_intent_status(mode_intent),
         "air_quality": air_quality,
         "outside_air": outside_air,
+        "zone_call_state": zone_call_state,
         "mpc": _proposal_status(proposal),
         "hybrid": hybrid,
         "solar": _solar_status(solar),
@@ -510,6 +617,7 @@ def _zone_evaluation_status(
     mode_intent: Any,
     air_quality: dict[str, Any],
     outside_air: dict[str, Any],
+    zone_call_state: dict[str, Any],
     proposal: Any,
     solar: SolarSignal,
     climate: ClimateSignal,
@@ -521,6 +629,7 @@ def _zone_evaluation_status(
         "mode_intent": _mode_intent_status(mode_intent),
         "air_quality": air_quality,
         "outside_air": outside_air,
+        "zone_call_state": zone_call_state,
         "mpc": _proposal_status(proposal),
         "solar": _solar_status(solar),
         "relaxation_allowed": _indoor_allows_relax(climate.indoor_temperature, target, cooling),
@@ -534,8 +643,10 @@ def _hybrid_evaluation_status(
     mode_intent: Any,
     air_quality: dict[str, Any],
     outside_air: dict[str, Any],
+    zone_call_state: dict[str, Any],
     proposal: Any,
     control_temperature: float | None,
+    control_plan: dict[str, Any] | None,
     solar: SolarSignal,
     climate: ClimateSignal,
     cooling: bool,
@@ -546,6 +657,7 @@ def _hybrid_evaluation_status(
         mode_intent=mode_intent,
         air_quality=air_quality,
         outside_air=outside_air,
+        zone_call_state=zone_call_state,
         proposal=proposal,
         solar=solar,
         climate=climate,
@@ -554,7 +666,11 @@ def _hybrid_evaluation_status(
     status["hybrid"] = {
         "strategy": "hybrid",
         "control_temperature": control_temperature,
-        "control_temperature_source": "synthetic_weighted_zone_demand" if control_temperature is not None else None,
+        "control_temperature_source": (control_plan or {}).get("control_temperature_source") if control_temperature is not None else None,
+        "control_temperature_base": (control_plan or {}).get("control_temperature_base"),
+        "comfort_delta": (control_plan or {}).get("comfort_delta"),
+        "boost_degrees": (control_plan or {}).get("boost_degrees", 0),
+        "telemetry_work_fraction": (control_plan or {}).get("telemetry_work_fraction"),
         "damper_percentages": {},
         "touchpad_temperature_commanded": False,
         "touchpad_temperature_note": None,

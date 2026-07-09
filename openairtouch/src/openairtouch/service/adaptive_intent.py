@@ -40,6 +40,24 @@ def _mode_intent_status(intent: AcModeIntent) -> dict[str, Any]:
     }
 
 
+def _thermal_intent_status(intent: Any) -> dict[str, Any]:
+    return {
+        "strategy": intent.strategy,
+        "mode": intent.mode_intent.mode,
+        "mode_name": intent.mode_intent.name,
+        "mode_reason": intent.mode_intent.reason,
+        "mode_source": intent.mode_intent.source,
+        "current_mode": intent.mode_intent.current_mode,
+        "current_mode_name": _mode_name(intent.mode_intent.current_mode),
+        "cooling": intent.cooling,
+        "setpoint": intent.setpoint,
+        "setpoint_source": intent.setpoint_source,
+        "setpoint_reason": intent.setpoint_reason,
+        "outside_air_intent": intent.mode_intent.outside_air_intent,
+        "ventilation_reason": intent.mode_intent.ventilation_reason,
+    }
+
+
 def _intent_status(evaluation: dict[str, Any], status: dict[str, Any]) -> dict[str, Any]:
     mode = str(status.get("mode") or "off")
     config = status.get("config") or {}

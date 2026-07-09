@@ -26,7 +26,7 @@ class AdaptiveCommandMixin:
         key = f"ac:{ac_id}:setpoint"
         payload = {"ac": ac_id, "setpoint": setpoint}
         self._record_restore(key, "ac_status", {"ac": ac_id, "setpoint": int(round(current))}, payload)
-        intent = AdaptiveCommandIntent("ac_status", payload, "ac", "set ac setpoint", restore_key=key, expected_value=setpoint)
+        intent = AdaptiveCommandIntent("set_ac_setpoint", payload, "ac", "set ac setpoint", "ac_status", payload, restore_key=key, expected_value=setpoint)
         return self._send_transaction(state, intent, key, status, now)
 
     def _set_ac_mode(self, state: dict[str, Any], ac_id: int, mode_intent: Any, status: dict[str, Any], now: float) -> TransactionSpec | None:
@@ -35,7 +35,7 @@ class AdaptiveCommandMixin:
         key = f"ac:{ac_id}:mode"
         payload = {"ac": ac_id, "mode": mode_intent.mode}
         self._record_restore(key, "ac_status", {"ac": ac_id, "mode": mode_intent.current_mode}, payload)
-        intent = AdaptiveCommandIntent("ac_status", payload, "ac", mode_intent.reason, restore_key=key, expected_value=mode_intent.mode)
+        intent = AdaptiveCommandIntent("set_ac_mode", payload, "ac", mode_intent.reason, "ac_status", payload, restore_key=key, expected_value=mode_intent.mode)
         return self._send_transaction(state, intent, key, status, now)
 
     def _set_ac_control_sensor(self, state: dict[str, Any], ac_id: int, sensor: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
@@ -55,13 +55,30 @@ class AdaptiveCommandMixin:
         original_payload = {"ac": ac_id, "ctrl_thermostat": current, "records": original_records}
         key = f"ac:{ac_id}:control_sensor"
         self._record_restore(key, "ac_setting_new", original_payload, {"ac": ac_id, "ctrl_thermostat": sensor})
-        intent = AdaptiveCommandIntent("ac_setting_new", payload, "touchpad", "set AC control sensor", restore_key=key, expected_value=sensor)
+        intent = AdaptiveCommandIntent(
+            "set_ac_control_sensor",
+            {"ac": ac_id, "ctrl_thermostat": sensor},
+            "touchpad",
+            "set AC control sensor",
+            "ac_setting_new",
+            payload,
+            restore_key=key,
+            expected_value=sensor,
+        )
         return self._send_transaction(state, intent, key, status, now)
 
     def _set_touchpad_temperature(self, state: dict[str, Any], sensor: int, temperature: float, status: dict[str, Any], now: float) -> TransactionSpec | None:
         rounded = int(round(temperature))
         payload = {"sensor": sensor, "temperature": rounded}
-        intent = AdaptiveCommandIntent("sensor_temperature", payload, "touchpad", "update synthetic control temperature", expected_value=rounded)
+        intent = AdaptiveCommandIntent(
+            "set_synthetic_temperature",
+            payload,
+            "touchpad",
+            "update synthetic control temperature",
+            "sensor_temperature",
+            payload,
+            expected_value=rounded,
+        )
         return self._send_transaction(state, intent, f"sensor:{sensor}:temperature", status, now)
 
     def _set_group_setpoint(self, state: dict[str, Any], group_id: int, setpoint: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
@@ -72,17 +89,41 @@ class AdaptiveCommandMixin:
         key = f"group:{group_id}:setpoint"
         payload = {"group": group_id, "setpoint": setpoint}
         self._record_restore(key, "group_setpoint", {"group": group_id, "setpoint": int(round(current))}, payload)
-        intent = AdaptiveCommandIntent("group_setpoint", payload, "zone", "set zone setpoint", restore_key=key, expected_value=setpoint)
+        intent = AdaptiveCommandIntent("set_zone_setpoint", payload, "zone", "set zone setpoint", "group_setpoint", payload, restore_key=key, expected_value=setpoint)
+        return self._send_transaction(state, intent, key, status, now)
+
+    def _set_group_power(self, state: dict[str, Any], group_id: int, on: bool, status: dict[str, Any], now: float) -> TransactionSpec | None:
+        group = _group_for_id(state, group_id)
+        group_status = (group.get("status") or {}) if isinstance(group, dict) else {}
+        current_on = group_status.get("power_name") in {"on", "turbo"}
+        if current_on == on:
+            return None
+        sensor_control = group_status.get("sensor_control") is not False
+        payload: dict[str, Any] = {"group": group_id, "on": on, "sensor_control": sensor_control}
+        setpoint = _number(group_status.get("setpoint"))
+        percentage = _number(group_status.get("percentage"))
+        if sensor_control:
+            payload["setpoint"] = int(round(setpoint)) if setpoint is not None else 23
+        else:
+            payload["percentage"] = int(round(percentage)) if percentage is not None else 0
+        key = f"group:{group_id}:power"
+        original = dict(payload)
+        original["on"] = current_on
+        self._record_restore(key, "group_power", original, payload)
+        intent = AdaptiveCommandIntent("set_zone_power", payload, "zone", "set zone power", "group_power", payload, restore_key=key, expected_value=on)
         return self._send_transaction(state, intent, key, status, now)
 
     def _set_group_percentage(self, state: dict[str, Any], group_id: int, percentage: int, status: dict[str, Any], now: float) -> TransactionSpec | None:
         group = _group_for_id(state, group_id)
         group_status = (group.get("status") or {}) if isinstance(group, dict) else {}
         current = _number(group_status.get("percentage"))
-        if current is None or int(round(current)) == percentage:
+        sensor_control = group_status.get("sensor_control") is True
+        if current is None:
+            return None
+        if not sensor_control and int(round(current)) == percentage:
             return None
         payload = {"group": group_id, "percentage": percentage}
-        if group_status.get("sensor_control") is True:
+        if sensor_control:
             setpoint = _number(group_status.get("setpoint"))
             if setpoint is None:
                 return None
@@ -97,7 +138,7 @@ class AdaptiveCommandMixin:
         else:
             key = f"group:{group_id}:percentage"
             self._record_restore(key, "group_percentage", {"group": group_id, "percentage": int(round(current))}, payload)
-        intent = AdaptiveCommandIntent("group_percentage", payload, "zone", "set zone damper", restore_key=key, expected_value=percentage)
+        intent = AdaptiveCommandIntent("set_zone_damper", payload, "zone", "set zone damper", "group_percentage", payload, restore_key=key, expected_value=percentage)
         return self._send_transaction(state, intent, key, status, now)
 
     def _send_ac_power(
@@ -112,7 +153,7 @@ class AdaptiveCommandMixin:
     ) -> TransactionSpec | None:
         payload = {"ac": ac_id, "power_on": power_on}
         key = f"{key_prefix}:ac:{ac_id}:power"
-        intent = AdaptiveCommandIntent("ac_status", payload, "ac", key_prefix.replace("_", " "), restore_key=key, expected_value=power_on)
+        intent = AdaptiveCommandIntent("set_ac_power", payload, "ac", key_prefix.replace("_", " "), "ac_status", payload, restore_key=key, expected_value=power_on)
         return self._send_transaction(state, intent, key, status, now)
 
     def _send_transaction(
@@ -123,7 +164,7 @@ class AdaptiveCommandMixin:
         status: dict[str, Any],
         now: float,
     ) -> TransactionSpec | None:
-        throttle_value = intent.expected_value if intent.expected_value is not None else _command_value(intent.data)
+        throttle_value = intent.expected_value if intent.expected_value is not None else _command_value(intent.transaction_data)
         if throttle_value is not None and not self._should_send(throttle_key, throttle_value, now):
             return None
         try:

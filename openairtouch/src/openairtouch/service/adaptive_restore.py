@@ -50,6 +50,9 @@ class AdaptiveRestoreMixin:
     def _restore_group_setpoint(self, state: dict[str, Any], group_id: int, status: dict[str, Any], now: float) -> list[TransactionSpec]:
         return self._restore_record(state, f"group:{group_id}:setpoint", status, now)
 
+    def _restore_group_power(self, state: dict[str, Any], group_id: int, status: dict[str, Any], now: float) -> list[TransactionSpec]:
+        return self._restore_record(state, f"group:{group_id}:power", status, now)
+
     def _restore_group_sensor_control(self, state: dict[str, Any], group_id: int, status: dict[str, Any], now: float) -> list[TransactionSpec]:
         return self._restore_record(state, f"group:{group_id}:sensor_control", status, now)
 
@@ -120,14 +123,24 @@ class AdaptiveRestoreMixin:
             if "power_on" in payload:
                 current["power_on"] = bool(ac_status.get("power_on"))
             return current
-        if action in {"group_setpoint", "group_percentage"}:
+        if action in {"group_setpoint", "group_percentage", "group_power"}:
             group_id = _optional_int(payload.get("group"))
             group = _group_for_id(state, group_id) if group_id is not None else None
             group_status = (group.get("status") or {}) if isinstance(group, dict) else {}
             current = {"group": group_id}
-            field = "setpoint" if action == "group_setpoint" else "percentage"
-            value = _number(group_status.get(field))
-            current[field] = int(round(value)) if value is not None else None
+            if action == "group_power":
+                current["on"] = group_status.get("power_name") in {"on", "turbo"}
+                current["sensor_control"] = group_status.get("sensor_control") is not False
+                if "setpoint" in payload:
+                    setpoint = _number(group_status.get("setpoint"))
+                    current["setpoint"] = int(round(setpoint)) if setpoint is not None else None
+                if "percentage" in payload:
+                    percentage = _number(group_status.get("percentage"))
+                    current["percentage"] = int(round(percentage)) if percentage is not None else None
+            else:
+                field = "setpoint" if action == "group_setpoint" else "percentage"
+                value = _number(group_status.get(field))
+                current[field] = int(round(value)) if value is not None else None
             return current
         if action == "ac_setting_new":
             ac_id = _optional_int(payload.get("ac"))
@@ -149,19 +162,23 @@ class AdaptiveRestoreMixin:
         if action == "ac_status":
             key_suffix = "mode" if "mode" in original else "setpoint" if "setpoint" in original else "status"
             key = f"restore:ac:{original.get('ac')}:{key_suffix}"
-            intent = AdaptiveCommandIntent(action, original, "restore", "restore AC state", restore_key=key, expected_value=_command_value(original))
+            intent = AdaptiveCommandIntent("restore_state", original, "restore", "restore AC state", action, original, restore_key=key, expected_value=_command_value(original))
             return self._send_transaction(state, intent, key, status, now)
         if action == "group_setpoint":
             key = f"restore:group:{original.get('group')}:setpoint"
-            intent = AdaptiveCommandIntent(action, original, "restore", "restore zone setpoint", restore_key=key, expected_value=_command_value(original))
+            intent = AdaptiveCommandIntent("restore_state", original, "restore", "restore zone setpoint", action, original, restore_key=key, expected_value=_command_value(original))
             return self._send_transaction(state, intent, key, status, now)
         if action == "group_percentage":
             key = f"restore:group:{original.get('group')}:percentage"
-            intent = AdaptiveCommandIntent(action, original, "restore", "restore zone damper", restore_key=key, expected_value=_command_value(original))
+            intent = AdaptiveCommandIntent("restore_state", original, "restore", "restore zone damper", action, original, restore_key=key, expected_value=_command_value(original))
+            return self._send_transaction(state, intent, key, status, now)
+        if action == "group_power":
+            key = f"restore:group:{original.get('group')}:power"
+            intent = AdaptiveCommandIntent("restore_state", original, "restore", "restore zone power", action, original, restore_key=key, expected_value=_command_value(original))
             return self._send_transaction(state, intent, key, status, now)
         if action == "ac_setting_new":
             key = f"restore:ac:{original.get('ac')}:control_sensor"
-            intent = AdaptiveCommandIntent(action, original, "restore", "restore AC control sensor", restore_key=key, expected_value=_command_value(original))
+            intent = AdaptiveCommandIntent("restore_state", original, "restore", "restore AC control sensor", action, original, restore_key=key, expected_value=_command_value(original))
             return self._send_transaction(state, intent, key, status, now)
         return None
 
@@ -180,6 +197,8 @@ class AdaptiveRestoreMixin:
             return f"{_group_name(group_id, group)}: Restored Setpoint: {original['setpoint']}°"
         if action == "group_percentage":
             return f"{_group_name(group_id, group)}: Restored Damper: {original['percentage']}%"
+        if action == "group_power":
+            return f"{_group_name(group_id, group)}: Restored Power: {'On' if original.get('on') else 'Off'}"
         if action == "ac_setting_new":
             ac_id = _optional_int(original.get("ac")) or 0
             ac = _indexed(state.get("acs") or {}, ac_id) or {}

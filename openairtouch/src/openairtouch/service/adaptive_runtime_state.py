@@ -147,7 +147,7 @@ def _cooling_for_mode(mode: int | None, *, default: bool) -> bool:
 
 
 def _command_value(payload: dict[str, Any]) -> int | bool | None:
-    for key in ("mode", "setpoint", "percentage", "temperature", "ctrl_thermostat", "power_on"):
+    for key in ("mode", "setpoint", "percentage", "temperature", "ctrl_thermostat", "power_on", "on"):
         if key in payload:
             value = payload[key]
             if isinstance(value, bool):

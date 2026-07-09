@@ -14,9 +14,8 @@ ADAPTIVE_CONTROL_STRATEGIES = ("weather", "zone", "hybrid")
 @dataclass(frozen=True)
 class AdaptiveConfig:
     mode: str = "off"
-    cool_diff: int = 4
+    comfort_margin: int = 4
     cool_comfort_temp: int = 24
-    heat_diff: int = 4
     heat_comfort_temp: int = 20
     check_interval: float = 60.0
     command_cooldown: float = 300.0
@@ -27,6 +26,7 @@ class AdaptiveConfig:
     compressor_groups: tuple[tuple[int, ...], ...] = ()
     control_zones: tuple[int, ...] = ()
     outside_air_zones: tuple[int, ...] = ()
+    allow_ac_power_on: bool = True
     control_strategy: str = "weather"
     dry_humidity_threshold: int = 70
     co2_ventilation_threshold_ppm: int = 1000
@@ -34,6 +34,7 @@ class AdaptiveConfig:
     hybrid_min_damper_percent: int = 10
     hybrid_max_damper_percent: int = 100
     hybrid_idle_damper_percent: int = 10
+    hybrid_max_boost_degrees: int = 2
 
 
 def validated_adaptive_config(config: AdaptiveConfig) -> AdaptiveConfig:
@@ -56,9 +57,8 @@ def validated_adaptive_config(config: AdaptiveConfig) -> AdaptiveConfig:
         mode=mode,
         learning_mode=learning_mode,
         control_strategy=control_strategy,
-        cool_diff=_int_range("cool_diff", config.cool_diff, 0, 15),
+        comfort_margin=_int_range("comfort_margin", config.comfort_margin, 0, 15),
         cool_comfort_temp=_int_range("cool_comfort_temp", config.cool_comfort_temp, 16, 32),
-        heat_diff=_int_range("heat_diff", config.heat_diff, 0, 15),
         heat_comfort_temp=_int_range("heat_comfort_temp", config.heat_comfort_temp, 16, 32),
         check_interval=max(5.0, float(config.check_interval)),
         command_cooldown=max(1.0, float(config.command_cooldown)),
@@ -71,18 +71,19 @@ def validated_adaptive_config(config: AdaptiveConfig) -> AdaptiveConfig:
         compressor_groups=validated_compressor_groups(config.compressor_groups),
         control_zones=_validated_control_zones(config.control_zones),
         outside_air_zones=_validated_outside_air_zones(config.outside_air_zones),
+        allow_ac_power_on=bool(config.allow_ac_power_on),
         hybrid_min_damper_percent=min_damper,
         hybrid_max_damper_percent=max_damper,
         hybrid_idle_damper_percent=_int_range("hybrid_idle_damper_percent", config.hybrid_idle_damper_percent, 0, 100),
+        hybrid_max_boost_degrees=_int_range("hybrid_max_boost_degrees", config.hybrid_max_boost_degrees, 0, 5),
     )
 
 
 def adaptive_public_config(config: AdaptiveConfig) -> dict[str, Any]:
     return {
         "mode": config.mode,
-        "cool_diff": config.cool_diff,
+        "comfort_margin": config.comfort_margin,
         "cool_comfort_temp": config.cool_comfort_temp,
-        "heat_diff": config.heat_diff,
         "heat_comfort_temp": config.heat_comfort_temp,
         "check_interval": config.check_interval,
         "command_cooldown": config.command_cooldown,
@@ -94,6 +95,7 @@ def adaptive_public_config(config: AdaptiveConfig) -> dict[str, Any]:
         "compressor_groups": [list(group) for group in config.compressor_groups],
         "control_zones": list(config.control_zones),
         "outside_air_zones": list(config.outside_air_zones),
+        "allow_ac_power_on": config.allow_ac_power_on,
         "control_strategy": config.control_strategy,
         "dry_humidity_threshold": config.dry_humidity_threshold,
         "co2_ventilation_threshold_ppm": config.co2_ventilation_threshold_ppm,
@@ -101,6 +103,7 @@ def adaptive_public_config(config: AdaptiveConfig) -> dict[str, Any]:
         "hybrid_min_damper_percent": config.hybrid_min_damper_percent,
         "hybrid_max_damper_percent": config.hybrid_max_damper_percent,
         "hybrid_idle_damper_percent": config.hybrid_idle_damper_percent,
+        "hybrid_max_boost_degrees": config.hybrid_max_boost_degrees,
     }
 
 

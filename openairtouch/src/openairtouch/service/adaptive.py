@@ -51,6 +51,7 @@ from .adaptive_state import (
     import_restore_records,
     import_weather_suspensions,
 )
+from .adaptive_zone_call import zone_call_status
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,16 @@ class AcModeIntent:
     current_mode: int | None = None
     outside_air_intent: bool = False
     ventilation_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class ThermalIntent:
+    strategy: str
+    mode_intent: AcModeIntent
+    cooling: bool | None
+    setpoint: int | None
+    setpoint_source: str | None
+    setpoint_reason: str | None
 
 
 class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, AdaptiveCommandMixin, AdaptiveRestoreMixin):
@@ -199,7 +210,7 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
         controlled = [
             room
             for room in device.rooms
-            if room.active and (room.control_enabled or room.configured_control) and room.temperature is not None and room.setpoint is not None
+            if self._participating_room(room) and room.temperature is not None and room.setpoint is not None
         ]
         if controlled:
             setpoints = [float(room.setpoint) for room in controlled if room.setpoint is not None]
@@ -215,7 +226,7 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
         candidates = [
             room
             for room in device.rooms
-            if room.active and (room.configured_control or room.control_enabled) and room.temperature is not None and room.setpoint is not None
+            if self._participating_room(room) and room.temperature is not None and room.setpoint is not None
         ]
         if not candidates:
             candidates = [
@@ -304,10 +315,45 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
             return None
         return max(demands, key=lambda item: item[1])
 
+    def _participating_room(self, room: AdaptiveRoom) -> bool:
+        if room.active and (room.configured_control or room.control_enabled):
+            return True
+        return self.config.control_strategy in {"zone", "hybrid"} and room.configured_control
+
     def _control_target(self, device: AdaptiveDevice, ac: dict[str, Any], outside: float, weather: WeatherSignal, climate: ClimateSignal, cooling: bool) -> int:
         if self.config.control_strategy in {"zone", "hybrid"}:
             return self._room_demand_target(device, ac, cooling)
         return self._adaptive_target(ac, outside, weather, climate, cooling)
+
+    def _thermal_intent(
+        self,
+        device: AdaptiveDevice,
+        ac: dict[str, Any],
+        outside: float,
+        weather: WeatherSignal,
+        climate: ClimateSignal,
+    ) -> ThermalIntent:
+        mode_intent = self._mode_intent(device, ac, climate)
+        cooling = True if mode_intent.mode == 4 else False if mode_intent.mode == 1 else None
+        setpoint: int | None = None
+        setpoint_source: str | None = None
+        setpoint_reason: str | None = None
+        if cooling is not None:
+            setpoint = self._control_target(device, ac, outside, weather, climate, cooling)
+            if self.config.control_strategy in {"zone", "hybrid"}:
+                setpoint_source = "room_setpoint"
+                setpoint_reason = "controlled_zone_demand"
+            else:
+                setpoint_source = "environment"
+                setpoint_reason = "weather_adjusted_global_setpoint"
+        return ThermalIntent(
+            strategy=self.config.control_strategy,
+            mode_intent=mode_intent,
+            cooling=cooling,
+            setpoint=setpoint,
+            setpoint_source=setpoint_source,
+            setpoint_reason=setpoint_reason,
+        )
 
     def _mpc_proposal(
         self,
@@ -329,7 +375,7 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
             rooms=device.rooms,
             baseline_target=baseline_target,
             cooling=cooling,
-            inputs=self._mpc_inputs(outside, weather, solar, telemetry, climate),
+            inputs=self._mpc_inputs(outside, weather, solar, telemetry, climate, device=device, cooling=cooling),
             advisory=advisory,
         )
 
@@ -340,7 +386,11 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
         solar: SolarSignal,
         telemetry: AcTelemetrySignal,
         climate: ClimateSignal,
+        *,
+        device: AdaptiveDevice | None = None,
+        cooling: bool | None = None,
     ) -> MpcInputs:
+        airtouch_zone_calls = zone_call_status(device.rooms, cooling) if device is not None else {}
         return MpcInputs(
             horizon_hours=self.config.mpc_horizon_hours,
             outside_temperature=outside,
@@ -372,14 +422,15 @@ class AdaptiveController(AdaptiveEvaluatorMixin, AdaptiveStrategyMixin, Adaptive
                     "outside_air_intent": climate.co2_ppm is not None and climate.co2_ppm >= self.config.co2_ventilation_threshold_ppm,
                 },
                 "telemetry": _ac_telemetry_status(telemetry),
+                "airtouch_zone_calls": airtouch_zone_calls,
             },
         )
 
     def _target_setpoint(self, outside: float, cooling: bool) -> int:
         outside_round = round(outside)
         if cooling:
-            return min(outside_round - self.config.cool_diff, self.config.cool_comfort_temp)
-        return max(outside_round + self.config.heat_diff, self.config.heat_comfort_temp)
+            return min(outside_round - self.config.comfort_margin, self.config.cool_comfort_temp)
+        return max(outside_round + self.config.comfort_margin, self.config.heat_comfort_temp)
 
     def _forecast_target(self, current_target: int, forecast_temperatures: tuple[float, ...], cooling: bool, *, step_minutes: float = 60.0) -> int:
         if not forecast_temperatures:

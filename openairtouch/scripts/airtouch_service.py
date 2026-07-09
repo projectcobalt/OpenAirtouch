@@ -50,9 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ac-supply-air-temp-entity", default="")
     parser.add_argument("--weather-poll-interval", type=float, default=60.0)
     parser.add_argument("--adaptive-mode", default="off", choices=("off", "recommend", "adaptive"))
-    parser.add_argument("--adaptive-cool-diff", type=int, default=4)
+    parser.add_argument("--adaptive-comfort-margin", type=int, default=4)
     parser.add_argument("--adaptive-cool-comfort-temp", type=int, default=24)
-    parser.add_argument("--adaptive-heat-diff", type=int, default=4)
     parser.add_argument("--adaptive-heat-comfort-temp", type=int, default=20)
     parser.add_argument("--adaptive-check-interval", type=float, default=60.0)
     parser.add_argument("--adaptive-command-cooldown", type=float, default=300.0)
@@ -120,9 +119,8 @@ def main(argv: list[str] | None = None) -> int:
             weather_poll_interval=args.weather_poll_interval,
             adaptive=AdaptiveConfig(
                 mode=args.adaptive_mode,
-                cool_diff=args.adaptive_cool_diff,
+                comfort_margin=args.adaptive_comfort_margin,
                 cool_comfort_temp=args.adaptive_cool_comfort_temp,
-                heat_diff=args.adaptive_heat_diff,
                 heat_comfort_temp=args.adaptive_heat_comfort_temp,
                 check_interval=args.adaptive_check_interval,
                 command_cooldown=args.adaptive_command_cooldown,

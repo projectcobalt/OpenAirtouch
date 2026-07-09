@@ -8,7 +8,7 @@ from typing import Any
 from ..session.queue import TransactionSpec
 from .adaptive_airtouch import translate_airtouch_snapshot
 from .adaptive_contracts import build_adaptive_input_contract
-from .adaptive_intent import _mode_intent_status
+from .adaptive_intent import _mode_intent_status, _thermal_intent_status
 from .adaptive_runtime_state import _ac_name, _indexed, _iter_acs
 from .adaptive_signals import (
     _ac_telemetry_signal,
@@ -88,10 +88,17 @@ class AdaptiveEvaluatorMixin:
             ac_id = device.ac_id
             ac = _indexed(state.get("acs") or {}, ac_id) or {}
             has_weather_suspension = self.config.control_strategy == "weather" and self._weather_suspension(ac_id) is not None
-            if not device.power_on or device.mode is None:
+            adaptive_can_prepare = (
+                mode == "adaptive"
+                and self.config.control_strategy in {"zone", "hybrid"}
+                and not device.power_on
+                and device.mode is not None
+            )
+            if (not device.power_on and not adaptive_can_prepare) or device.mode is None:
                 if mode == "adaptive" and has_weather_suspension:
                     climate = _climate_for_ac(state, ac_id, ac, indoor, weather_signal)
-                    mode_intent = self._mode_intent(device, ac, climate)
+                    thermal_intent = self._thermal_intent(device, ac, outside, weather_signal, climate)
+                    mode_intent = thermal_intent.mode_intent
                     status["evaluations"].append({
                         "ac": ac_id,
                         "name": _ac_name(ac_id, ac),
@@ -102,13 +109,15 @@ class AdaptiveEvaluatorMixin:
                         "co2_ppm": climate.co2_ppm,
                         "co2_source": climate.co2_source,
                         "mode_intent": _mode_intent_status(mode_intent),
+                        "thermal_intent": _thermal_intent_status(thermal_intent),
                     })
-                    specs.extend(self._weather_action(state, ac_id, ac, outside, weather_signal, climate, mode_intent, status, now, planned_power_off))
+                    specs.extend(self._weather_action(state, ac_id, ac, outside, weather_signal, climate, thermal_intent, status, now, planned_power_off))
                 else:
                     specs.extend(self._restore_ac(state, ac_id, status, now))
                 continue
             climate = _climate_for_ac(state, ac_id, ac, indoor, weather_signal)
-            mode_intent = self._mode_intent(device, ac, climate)
+            thermal_intent = self._thermal_intent(device, ac, outside, weather_signal, climate)
+            mode_intent = thermal_intent.mode_intent
             status["evaluations"].append({
                 "ac": ac_id,
                 "name": _ac_name(ac_id, ac),
@@ -119,16 +128,17 @@ class AdaptiveEvaluatorMixin:
                 "co2_ppm": climate.co2_ppm,
                 "co2_source": climate.co2_source,
                 "mode_intent": _mode_intent_status(mode_intent),
+                "thermal_intent": _thermal_intent_status(thermal_intent),
             })
             if mode == "recommend":
-                self._recommend_action(device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, mode_intent, status)
+                self._recommend_action(device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, thermal_intent, status)
             elif mode == "adaptive":
                 if self.config.control_strategy == "weather":
-                    specs.extend(self._weather_action(state, ac_id, ac, outside, weather_signal, climate, mode_intent, status, now, planned_power_off))
+                    specs.extend(self._weather_action(state, ac_id, ac, outside, weather_signal, climate, thermal_intent, status, now, planned_power_off))
                 elif self.config.control_strategy == "hybrid":
-                    specs.extend(self._hybrid_damper_action(state, device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, mode_intent, status, now))
+                    specs.extend(self._hybrid_damper_action(state, device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, thermal_intent, status, now))
                 else:
-                    specs.extend(self._adaptive_action(state, device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, mode_intent, status, now))
+                    specs.extend(self._adaptive_action(state, device, ac, outside, weather_signal, solar_signal, telemetry_signal, climate, thermal_intent, status, now))
         self._status = self._final_status(status)
         return specs
 

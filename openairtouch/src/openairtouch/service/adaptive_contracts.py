@@ -7,30 +7,44 @@ from typing import Any, Literal
 
 AdaptiveAuthority = Literal["off", "insight", "control"]
 AdaptiveCommandSurface = Literal["ac", "zone", "outside_air", "restore", "touchpad"]
+AdaptiveCommandKind = Literal[
+    "set_ac_power",
+    "set_ac_mode",
+    "set_ac_setpoint",
+    "set_ac_control_sensor",
+    "set_synthetic_temperature",
+    "set_zone_power",
+    "set_zone_setpoint",
+    "set_zone_damper",
+    "restore_state",
+]
 
 
 @dataclass(frozen=True)
 class AdaptiveCommandIntent:
     """Protocol-neutral command request emitted by adaptive control."""
 
-    action: str
+    intent: AdaptiveCommandKind
     data: dict[str, Any]
     surface: AdaptiveCommandSurface
     reason: str
+    transaction_action: str
+    transaction_data: dict[str, Any]
     restore_key: str | None = None
     expected_value: int | bool | None = None
 
     def as_transaction_request(self) -> dict[str, Any]:
-        return {"action": self.action, "data": dict(self.data)}
+        return {"action": self.transaction_action, "data": dict(self.transaction_data)}
 
     def as_status(self) -> dict[str, Any]:
         return {
-            "action": self.action,
+            "intent": self.intent,
             "data": dict(self.data),
             "surface": self.surface,
             "reason": self.reason,
             "restore_key": self.restore_key,
             "expected_value": self.expected_value,
+            "transaction": self.as_transaction_request(),
         }
 
 

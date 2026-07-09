@@ -7,7 +7,8 @@ import { adaptiveConfigPayload } from "./commands.js";
 function fakeAdaptiveCard(values = {}) {
   return {
     querySelector(selector) {
-      return Object.hasOwn(values, selector) ? {value: values[selector]} : null;
+      if (!Object.hasOwn(values, selector)) return null;
+      return typeof values[selector] === "object" ? values[selector] : {value: values[selector]};
     },
     querySelectorAll(selector) {
       return values[selector] || [];
@@ -25,6 +26,32 @@ test("adaptiveConfigPayload includes air quality thresholds", () => {
   assert.equal(payload.co2_ventilation_threshold_ppm, 1250);
 });
 
+test("adaptiveConfigPayload uses one comfort margin", () => {
+  const payload = adaptiveConfigPayload(fakeAdaptiveCard({
+    "#adaptive-comfort-margin": "5"
+  }));
+
+  assert.equal(payload.comfort_margin, 5);
+  assert.equal(Object.hasOwn(payload, "cool_diff"), false);
+  assert.equal(Object.hasOwn(payload, "heat_diff"), false);
+});
+
+test("adaptiveConfigPayload includes ac power permission", () => {
+  const payload = adaptiveConfigPayload(fakeAdaptiveCard({
+    "#adaptive-allow-ac-power-on": {checked: false}
+  }));
+
+  assert.equal(payload.allow_ac_power_on, false);
+});
+
+test("adaptiveConfigPayload includes hybrid max boost", () => {
+  const payload = adaptiveConfigPayload(fakeAdaptiveCard({
+    "#adaptive-hybrid-max-boost-degrees": "3"
+  }));
+
+  assert.equal(payload.hybrid_max_boost_degrees, 3);
+});
+
 test("adaptive config view exposes air quality threshold controls", async () => {
   const source = await readFile(new URL("../views/AdaptiveView.svelte", import.meta.url), "utf8");
 
@@ -32,4 +59,17 @@ test("adaptive config view exposes air quality threshold controls", async () => 
   assert.match(source, /id="adaptive-co2-ventilation-threshold"/);
   assert.match(source, /Dry Humidity Threshold/);
   assert.match(source, /CO2 Ventilation Threshold/);
+});
+
+test("adaptive config view exposes one comfort margin control", async () => {
+  const source = await readFile(new URL("../views/AdaptiveView.svelte", import.meta.url), "utf8");
+
+  assert.match(source, /id="adaptive-comfort-margin"/);
+  assert.match(source, /Comfort Margin/);
+  assert.match(source, /id="adaptive-allow-ac-power-on"/);
+  assert.match(source, /Allow AC Power On/);
+  assert.match(source, /id="adaptive-hybrid-max-boost-degrees"/);
+  assert.match(source, /Hybrid Max Boost/);
+  assert.doesNotMatch(source, /adaptive-cool-diff/);
+  assert.doesNotMatch(source, /adaptive-heat-diff/);
 });
