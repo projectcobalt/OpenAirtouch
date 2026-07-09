@@ -8,6 +8,10 @@ from openairtouch.service.adaptive_model import AdaptiveDevice, AdaptiveRoom, Ad
 from openairtouch.service.adaptive_mpc import AdaptiveMpcEngine, MpcInputs, ZoneThermalModel
 
 
+def command_requests(controller: AdaptiveController) -> list[tuple[str, dict]]:
+    return [(intent["action"], intent["data"]) for intent in controller.status()["command_intents"]]
+
+
 def ready_model() -> ZoneThermalModel:
     model = ZoneThermalModel(passive_samples=60, active_samples=20, learn=True)
     model.ekf.updates = 80
@@ -217,8 +221,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         specs = controller.evaluate(runtime_state(ac_setpoint=24), integrations(20), now=1.0)
 
         self.assertEqual(len(specs), 1)
-        self.assertEqual(specs[0].command, 0x22)
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "80 87 1F 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "power_on": False})])
         self.assertIn("ac:0", controller.export_weather_state()["suspensions"])
         self.assertTrue(controller.status()["evaluations"][0]["weather_intent"]["pause_active"])
 
@@ -226,10 +229,12 @@ class AdaptiveControllerTests(unittest.TestCase):
         controller = AdaptiveController(AdaptiveConfig(mode="adaptive", control_strategy="weather", check_interval=5, command_cooldown=1))
 
         first = controller.evaluate(runtime_state(ac_setpoint=24), integrations(20), now=1.0)
+        first_commands = command_requests(controller)
         second = controller.evaluate(runtime_state(ac_setpoint=24, power_on=False), integrations(28), now=10.0)
 
-        self.assertEqual(first[0].payload.hex(" ").upper(), "80 87 1F 00")
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in second], ["C0 87 1F 00"])
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first_commands, [("ac_status", {"ac": 0, "power_on": False})])
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "power_on": True})])
         self.assertEqual(controller.export_weather_state(), {"suspensions": {}})
         self.assertEqual(controller.status()["evaluations"][0]["weather_intent"]["intent"], "resume")
 
@@ -306,8 +311,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         specs = controller.evaluate(runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=19), integrations(30), now=1.0)
 
         self.assertEqual([spec.command for spec in specs], [0x22, 0x22])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
-        self.assertEqual(specs[1].payload.hex(" ").upper(), "00 87 12 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 1}), ("ac_status", {"ac": 0, "setpoint": 22})])
         self.assertEqual(controller.status()["evaluations"][0]["target"], 22)
         self.assertEqual(controller.status()["actions"], ["Home: Mode Changed: Heat", "Home: Setpoint Changed: 22°"])
 
@@ -323,7 +327,8 @@ class AdaptiveControllerTests(unittest.TestCase):
         changed = controller.evaluate(runtime_state(ac_setpoint=20, zone_setpoint=22, zone_temperature=25), integrations(30), now=1.0)
         restore_state = controller.export_restore_state()
 
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in changed], ["00 87 12 00"])
+        self.assertEqual(len(changed), 1)
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "setpoint": 22})])
         self.assertEqual(restore_state["records"]["ac:0:setpoint"]["original"], {"ac": 0, "setpoint": 20})
         self.assertEqual(restore_state["records"]["ac:0:setpoint"]["target"], {"ac": 0, "setpoint": 22})
 
@@ -340,7 +345,8 @@ class AdaptiveControllerTests(unittest.TestCase):
         reloaded.import_learning(controller.export_learning())
         specs = reloaded.evaluate(runtime_state(ac_setpoint=22, zone_setpoint=22, zone_temperature=25), integrations(30), now=10.0)
 
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in specs], ["00 87 10 00"])
+        self.assertEqual(len(specs), 1)
+        self.assertEqual(command_requests(reloaded), [("ac_status", {"ac": 0, "setpoint": 20})])
         self.assertEqual(reloaded.export_restore_state(), {"records": {}})
 
     def test_runtime_must_be_connected_before_adaptive_commands_or_restore(self) -> None:
@@ -418,8 +424,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         )
 
         self.assertEqual([spec.command for spec in specs], [0x22, 0x22])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
-        self.assertEqual(specs[1].payload.hex(" ").upper(), "00 87 12 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 1}), ("ac_status", {"ac": 0, "setpoint": 22})])
         self.assertEqual(controller.status()["evaluations"][0]["target"], 22)
         self.assertEqual(controller.status()["evaluations"][0]["mpc"]["target"], 22)
         self.assertEqual(controller.status()["evaluations"][0]["mpc"]["source"], "zone")
@@ -682,7 +687,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         )
 
         self.assertEqual([spec.command for spec in specs], [0x22])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 47 1F 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 4})])
         self.assertEqual(controller.status()["actions"], ["Home: Mode Changed: Cool"])
 
     def test_adaptive_mode_commands_heating_only_below_heating_comfort(self) -> None:
@@ -706,7 +711,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         )
 
         self.assertEqual([spec.command for spec in specs], [0x22])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 1})])
         self.assertEqual(controller.status()["actions"], ["Home: Mode Changed: Heat"])
 
     def test_recommend_hybrid_reports_air_quality_preview_without_hybrid_plan_for_dry(self) -> None:
@@ -860,11 +865,11 @@ class AdaptiveControllerTests(unittest.TestCase):
         )
 
         self.assertEqual([spec.command for spec in specs], [0x22, 0x22, 0x78, 0x72, 0x20])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
-        self.assertEqual(specs[1].payload.hex(" ").upper(), "00 87 12 00")
-        self.assertEqual(specs[2].payload.hex(" ").upper(), "00 0D 91 88 00 00 00 00 00 00 1E 10 00 00 00")
-        self.assertEqual(specs[3].payload.hex(" ").upper(), "91 13")
-        self.assertEqual(specs[4].payload.hex(" ").upper(), "80 64 00 00")
+        self.assertEqual(command_requests(controller)[:2], [("ac_status", {"ac": 0, "mode": 1}), ("ac_status", {"ac": 0, "setpoint": 22})])
+        self.assertEqual(command_requests(controller)[2][0], "ac_setting_new")
+        self.assertEqual(command_requests(controller)[2][1]["ctrl_thermostat"], 0x91)
+        self.assertEqual(command_requests(controller)[3], ("sensor_temperature", {"sensor": 0x91, "temperature": 19}))
+        self.assertEqual(command_requests(controller)[4], ("group_percentage", {"group": 0, "percentage": 100}))
         evaluation = controller.status()["evaluations"][0]
         self.assertEqual(evaluation["mpc"]["source"], "zone")
         self.assertEqual(evaluation["hybrid"]["strategy"], "hybrid")
@@ -898,8 +903,12 @@ class AdaptiveControllerTests(unittest.TestCase):
             now=10.0,
         )
 
-        self.assertEqual(first[-1].payload.hex(" ").upper(), "80 64 00 00")
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in second], ["00 47 1F 00", "00 87 10 00", "80 19 00 00"])
+        self.assertEqual(len(first), 5)
+        self.assertEqual(command_requests(controller), [
+            ("ac_status", {"ac": 0, "mode": 4}),
+            ("ac_status", {"ac": 0, "setpoint": 20}),
+            ("group_percentage", {"group": 0, "percentage": 25}),
+        ])
         self.assertEqual(controller.status()["active_dampers"], [])
 
     def test_hybrid_restores_ac_control_sensor_when_disabled(self) -> None:
@@ -932,7 +941,8 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertEqual(restore["ac:0:control_sensor"]["action"], "ac_setting_new")
         self.assertEqual(restore["ac:0:control_sensor"]["target"], {"ac": 0, "ctrl_thermostat": 0x91})
         self.assertEqual([spec.command for spec in second], [0x22, 0x22, 0x78, 0x20])
-        self.assertEqual(second[2].payload.hex(" ").upper(), "00 0D 00 88 00 00 00 00 00 00 1E 10 00 00 00")
+        self.assertEqual(command_requests(controller)[2][0], "ac_setting_new")
+        self.assertEqual(command_requests(controller)[2][1]["ctrl_thermostat"], 0)
         self.assertEqual(controller.status()["active_ac"], [])
 
     def test_hybrid_restores_sensor_control_instead_of_stale_damper_for_sensor_zone(self) -> None:
@@ -961,12 +971,16 @@ class AdaptiveControllerTests(unittest.TestCase):
             now=10.0,
         )
 
-        self.assertEqual(first[-1].payload.hex(" ").upper(), "80 64 00 00")
+        self.assertEqual(len(first), 5)
         self.assertIn("group:0:sensor_control", restore)
         self.assertNotIn("group:0:percentage", restore)
         self.assertEqual(restore["group:0:sensor_control"]["action"], "group_setpoint")
         self.assertEqual(restore["group:0:sensor_control"]["target_action"], "group_percentage")
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in second], ["00 47 1F 00", "00 87 10 00", "80 92 00 00"])
+        self.assertEqual(command_requests(controller), [
+            ("ac_status", {"ac": 0, "mode": 4}),
+            ("ac_status", {"ac": 0, "setpoint": 20}),
+            ("group_setpoint", {"group": 0, "setpoint": 22}),
+        ])
         self.assertEqual(controller.status()["active_dampers"], [])
 
     def test_hybrid_damper_bounds_are_integer_percentages(self) -> None:
@@ -1023,8 +1037,7 @@ class AdaptiveControllerTests(unittest.TestCase):
             now=1.0,
         )
 
-        payloads = [spec.payload.hex(" ").upper() for spec in specs]
-        self.assertIn("80 64 00 00", payloads)
+        self.assertIn(("group_percentage", {"group": 0, "percentage": 100}), command_requests(controller))
         evaluation = controller.status()["evaluations"][0]
         self.assertEqual(evaluation["outside_air"]["configured_zones"], [0])
         self.assertEqual(evaluation["outside_air"]["commanded_percent"], 100)
@@ -1052,7 +1065,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         self.assertLess(zone["confidence"], 0.35)
         self.assertFalse(zone["mpc_ready"])
         self.assertEqual(controller.status()["evaluations"][0]["mpc"]["source"], "learning")
-        self.assertEqual([spec.payload.hex(" ").upper() for spec in specs], ["00 17 1F 00"])
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 1})])
 
     def test_learning_observations_are_spaced_like_roommind(self) -> None:
         normal = ZoneThermalModel(learn=True)
@@ -1357,8 +1370,7 @@ class AdaptiveControllerTests(unittest.TestCase):
         )
 
         self.assertEqual([spec.command for spec in specs], [0x22, 0x22])
-        self.assertEqual(specs[0].payload.hex(" ").upper(), "00 17 1F 00")
-        self.assertEqual(specs[1].payload.hex(" ").upper(), "00 87 11 00")
+        self.assertEqual(command_requests(controller), [("ac_status", {"ac": 0, "mode": 1}), ("ac_status", {"ac": 0, "setpoint": 21})])
 
     def test_dry_mode_intent_requires_indoor_humidity_sensor(self) -> None:
         controller = AdaptiveController(AdaptiveConfig(mode="recommend", control_strategy="zone", command_cooldown=1, control_zones=(0,)))
