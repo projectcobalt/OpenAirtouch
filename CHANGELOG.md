@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add AT5 protocol bootstrap detection behind the protocol profile boundary while keeping upstream runtime and service layers protocol-agnostic.
+- Reuse the detected protocol on TCP reconnects as a warm start instead of rerunning the full cold boot detection flow.
+- Require touchpad address evidence before active auto/warm AT4 startup, and allow explicit local development sharing on secondary address 0x91.
+
 ## 0.8.7 - 2026-07-09
 
 - Split adaptive controller configuration, evaluation, persisted state, runtime-state helpers, MPC compressor tracking, and MPC status projection into focused modules.
