@@ -1922,19 +1922,16 @@
 
   .analytics-list {
     display: grid;
-    gap: 6px;
+    gap: 8px;
   }
 
   .analytics-row {
     min-height: 0;
-    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) minmax(150px, .8fr) max-content;
-    grid-template-areas:
-      "status facts chart actions"
-      "status summary chart actions";
+    grid-template-columns: minmax(120px, .8fr) minmax(190px, 1.1fr) minmax(170px, 1fr) auto;
     align-items: center;
     align-content: center;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 10px;
+    padding: 8px 10px;
   }
 
   .analytics-row.ready {
@@ -1945,59 +1942,21 @@
     background: var(--surface-elevated);
   }
 
-  .analytics-row[data-analytics-kind="environment"] {
-    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) minmax(150px, .8fr);
-    grid-template-areas:
-      "status facts chart"
-      "status summary chart";
-  }
-
-  .analytics-row.no-chart {
-    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) max-content;
-    grid-template-areas:
-      "status facts actions"
-      "status summary actions";
-  }
-
-  .analytics-row.no-chart[data-analytics-kind="environment"] {
-    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr);
-    grid-template-areas:
-      "status facts"
-      "status summary";
-  }
-
   .analytics-row-status {
-    grid-area: status;
     display: grid;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
-  }
-
-  .analytics-facts {
-    grid-area: facts;
-  }
-
-  .analytics-plan-summary {
-    grid-area: summary;
-    min-width: 0;
-    color: var(--muted);
-    font-size: 0.7rem;
-    line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .analytics-sparkline {
-    grid-area: chart;
     display: grid;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
   }
 
   .analytics-sparkline .temp-line {
     width: 100%;
-    height: 22px;
+    height: 32px;
   }
 
   .analytics-sparkline .axis {
@@ -2051,7 +2010,6 @@
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    min-width: 0;
     color: var(--muted);
     font-size: 0.68rem;
   }
@@ -2067,7 +2025,6 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
-    min-width: 0;
   }
 
   .model-badge-grid.compact {
@@ -2075,7 +2032,7 @@
   }
 
   .model-badge {
-    min-height: 22px;
+    min-height: 24px;
     display: grid;
     gap: 1px;
     padding: 3px 5px;
@@ -2093,98 +2050,50 @@
   }
 
   .analytics-row .card-title {
-    font-size: 0.84rem;
-    line-height: 1.1;
+    font-size: 0.9rem;
   }
 
   .analytics-row .hero-detail {
-    font-size: 0.68rem;
-    line-height: 1.15;
+    font-size: 0.72rem;
   }
 
   .analytics-row .service-actions {
-    grid-area: actions;
     margin-top: 0;
     flex-wrap: nowrap;
-    gap: 4px;
+    gap: 5px;
     justify-content: flex-end;
   }
 
   .analytics-row .service-actions button {
-    min-height: 22px;
-    padding: 2px 6px;
-    font-size: 9px;
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 11px;
   }
 
   .analytics-row .pill-row-inline {
     gap: 4px;
-    flex-wrap: nowrap;
-    overflow: hidden;
   }
 
   .analytics-row .pill-row-inline span {
-    min-height: 18px;
-    padding: 2px 5px;
-    font-size: 9px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-height: 20px;
+    padding: 2px 6px;
+    font-size: 10px;
   }
 
-  .analytics-row .model-badge-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 3px;
-  }
-
-  .analytics-row .model-badge {
-    min-height: 18px;
-    padding: 2px 4px;
-    font-size: 9px;
-  }
-
-  .analytics-row .model-badge b {
-    font-size: 8px;
-  }
-
-  @media (max-width: 900px) {
+  @media (max-width: 1180px) {
     .analytics-row {
-      grid-template-columns: minmax(110px, .8fr) minmax(0, 1fr) minmax(130px, .8fr);
-      grid-template-areas:
-        "status facts chart"
-        "summary summary actions";
+      grid-template-columns: minmax(120px, .8fr) minmax(170px, 1fr) minmax(150px, 1fr);
     }
 
     .analytics-row .service-actions {
+      grid-column: 1 / -1;
       justify-content: flex-end;
-    }
-
-    .analytics-row.no-chart {
-      grid-template-columns: minmax(110px, .8fr) minmax(0, 1fr);
-      grid-template-areas:
-        "status facts"
-        "summary actions";
     }
   }
 
   @media (max-width: 760px) {
     .analytics-row {
       grid-template-columns: 1fr;
-      grid-template-areas:
-        "status"
-        "facts"
-        "summary"
-        "chart"
-        "actions";
-    }
-
-    .analytics-row.no-chart,
-    .analytics-row.no-chart[data-analytics-kind="environment"] {
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        "status"
-        "facts"
-        "summary"
-        "actions";
     }
 
     .model-badge-grid {
