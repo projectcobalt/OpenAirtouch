@@ -1995,6 +1995,11 @@
     stroke-dasharray: 4 4;
   }
 
+  .analytics-sparkline.not-meaningful .chart-line {
+    stroke: color-mix(in srgb, var(--muted) 62%, transparent);
+    stroke-width: 1.1;
+  }
+
   .analytics-sparkline .prediction-line {
     stroke: #c9784d;
     stroke-width: 1.35;

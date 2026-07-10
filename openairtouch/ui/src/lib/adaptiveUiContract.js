@@ -1,7 +1,7 @@
 const REQUIRED_SURFACES = ["environment", "zone", "hybrid"];
 const REQUIRED_SUMMARY_FIELDS = ["headline", "detail", "authority", "mode", "strategy", "intent"];
 const REQUIRED_ANALYTICS_CARD_FIELDS = ["id", "kind", "title", "state", "flags", "badges", "chart"];
-const REQUIRED_CHART_FIELDS = ["variant", "title", "summary", "unit", "lines", "bands", "windows", "has_data"];
+const REQUIRED_CHART_FIELDS = ["variant", "title", "summary", "unit", "lines", "bands", "windows", "has_data", "meaningful"];
 
 const missing = (value) => value === undefined || value === null || value === "";
 

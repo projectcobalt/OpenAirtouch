@@ -37,6 +37,7 @@ const validContract = () => ({
           bands: [],
           windows: [],
           has_data: false,
+          meaningful: false,
           empty_reason: "No chart data"
         }
       }

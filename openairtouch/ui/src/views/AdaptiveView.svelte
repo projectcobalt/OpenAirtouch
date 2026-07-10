@@ -1,5 +1,6 @@
 <script>
   import Subnav from "../components/Subnav.svelte";
+  import { analyticsChartData, lineClass } from "../lib/adaptiveChart.js";
   import { validateAdaptiveUiContract } from "../lib/adaptiveUiContract.js";
   import { title } from "../lib/format.js";
 
@@ -16,62 +17,6 @@
   export let onSaveConfig = () => {};
   export let onModelAction = () => {};
 
-  const finite = (value) => {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  };
-  const lineClass = (kind = "") => `chart-line chart-line-${kind || "actual"}`;
-  const chartValues = (chart = {}) => [
-    ...(Array.isArray(chart.lines) ? chart.lines.flatMap((line) => (line.points || []).map((point) => finite(point.y)).filter((value) => value !== null)) : []),
-    ...(Array.isArray(chart.bands) ? chart.bands.flatMap((band) => [finite(band.min), finite(band.max)]).filter((value) => value !== null) : [])
-  ];
-  const chartXs = (chart = {}) => [
-    ...(Array.isArray(chart.lines) ? chart.lines.flatMap((line) => (line.points || []).map((point) => finite(point.x)).filter((value) => value !== null)) : []),
-    ...(Array.isArray(chart.windows) ? chart.windows.flatMap((window) => [finite(window.start), finite(window.end)]).filter((value) => value !== null) : [])
-  ];
-  function analyticsChartData(chart = {}) {
-    const values = chartValues(chart);
-    const xs = chartXs(chart);
-    const minY = values.length ? Math.min(...values) : 0;
-    const maxY = values.length ? Math.max(...values) : 1;
-    const pad = Math.max(0.5, (maxY - minY) * 0.18);
-    const y0 = minY - pad;
-    const y1 = maxY + pad;
-    const minX = xs.length ? Math.min(...xs) : 0;
-    const maxX = xs.length ? Math.max(...xs) : 1;
-    const yScale = (value) => 40 - (((value - y0) / Math.max(1, y1 - y0)) * 32);
-    const xScale = (value) => ((value - minX) / Math.max(1, maxX - minX)) * 160;
-    const linePaths = (Array.isArray(chart.lines) ? chart.lines : []).map((line) => ({
-      ...line,
-      path: (line.points || [])
-        .map((point, index) => {
-          const x = finite(point.x);
-          const y = finite(point.y);
-          if (x === null || y === null) return "";
-          return `${index ? "L" : "M"}${xScale(x).toFixed(1)} ${yScale(y).toFixed(1)}`;
-        })
-        .filter(Boolean)
-        .join(" ")
-    })).filter((line) => line.path);
-    const bands = (Array.isArray(chart.bands) ? chart.bands : []).map((band) => {
-      const top = yScale(finite(band.max) ?? finite(band.min) ?? 0);
-      const bottom = yScale(finite(band.min) ?? finite(band.max) ?? 0);
-      return {...band, y: Math.min(top, bottom), height: Math.max(1, Math.abs(bottom - top))};
-    });
-    const windows = (Array.isArray(chart.windows) ? chart.windows : []).map((window) => {
-      const start = xScale(finite(window.start) ?? minX);
-      const end = xScale(finite(window.end) ?? minX);
-      return {...window, x: Math.min(start, end), width: Math.max(1, Math.abs(end - start))};
-    });
-    return {
-      title: chart.title || "Analytics",
-      summary: chart.summary || chart.empty_reason || "No chart data",
-      hasData: chart.has_data === true && linePaths.length > 0,
-      linePaths,
-      bands,
-      windows
-    };
-  }
   const surfaceActive = (label, strategy) => (
     (label === "Environment" && strategy === "weather")
     || (label === "Zone" && strategy === "zone")
@@ -246,7 +191,7 @@
               {/each}
             </div>
           </div>
-          <div class="analytics-sparkline">
+          <div class="analytics-sparkline" class:not-meaningful={!chart.meaningful}>
             <svg class="temp-line" viewBox="0 0 160 44" preserveAspectRatio="none" aria-hidden="true">
               <line class="axis" x1="0" y1="28" x2="160" y2="28"></line>
               {#each chart.bands as band}
