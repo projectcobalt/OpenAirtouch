@@ -1922,16 +1922,16 @@
 
   .analytics-list {
     display: grid;
-    gap: 8px;
+    gap: 6px;
   }
 
   .analytics-row {
     min-height: 0;
-    grid-template-columns: minmax(96px, .75fr) minmax(0, 1.1fr) minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(92px, .65fr) minmax(0, 1.25fr) minmax(0, 1fr) max-content;
     align-items: center;
     align-content: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 6px;
+    padding: 6px 8px;
   }
 
   .analytics-row.ready {
@@ -1948,19 +1948,19 @@
 
   .analytics-row-status {
     display: grid;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
   }
 
   .analytics-sparkline {
     display: grid;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
   }
 
   .analytics-sparkline .temp-line {
     width: 100%;
-    height: 28px;
+    height: 22px;
   }
 
   .analytics-sparkline .axis {
@@ -2056,24 +2056,26 @@
   }
 
   .analytics-row .card-title {
-    font-size: 0.9rem;
+    font-size: 0.84rem;
+    line-height: 1.1;
   }
 
   .analytics-row .hero-detail {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
+    line-height: 1.15;
   }
 
   .analytics-row .service-actions {
     margin-top: 0;
     flex-wrap: nowrap;
-    gap: 5px;
+    gap: 4px;
     justify-content: flex-end;
   }
 
   .analytics-row .service-actions button {
-    min-height: 26px;
-    padding: 3px 7px;
-    font-size: 10px;
+    min-height: 22px;
+    padding: 2px 6px;
+    font-size: 9px;
   }
 
   .analytics-row .pill-row-inline {
@@ -2083,12 +2085,27 @@
   }
 
   .analytics-row .pill-row-inline span {
-    min-height: 20px;
-    padding: 2px 6px;
-    font-size: 10px;
+    min-height: 18px;
+    padding: 2px 5px;
+    font-size: 9px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .analytics-row .model-badge-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .analytics-row .model-badge {
+    min-height: 18px;
+    padding: 2px 4px;
+    font-size: 9px;
+  }
+
+  .analytics-row .model-badge b {
+    font-size: 8px;
   }
 
   @media (max-width: 900px) {
@@ -2108,6 +2125,10 @@
     }
 
     .model-badge-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .analytics-row .model-badge-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }

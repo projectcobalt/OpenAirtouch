@@ -79,11 +79,12 @@ test("adaptive config view exposes one comfort margin control", async () => {
   assert.doesNotMatch(source, /adaptive-heat-diff/);
 });
 
-test("adaptive analytics view carries live zone names into chart labels", async () => {
+test("adaptive analytics view reads zone names from the backend contract", async () => {
   const source = await readFile(new URL("../views/AdaptiveView.svelte", import.meta.url), "utf8");
 
-  assert.match(source, /function analyticsZoneLabel/);
-  assert.match(source, /groupEntries\.find/);
+  assert.doesNotMatch(source, /function analyticsZoneLabel/);
+  assert.doesNotMatch(source, /groupEntries\.find/);
+  assert.match(source, /return card\.title \|\| "Analytics"/);
   assert.match(source, /analyticsCardTitle\(card\)/);
   assert.match(source, /analyticsChartTitle\(card, chart\)/);
   assert.match(source, /function analyticsFlags/);

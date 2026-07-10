@@ -77,17 +77,11 @@
     || (label === "Zone" && strategy === "zone")
     || (label === "Hybrid" && strategy === "hybrid")
   );
-  function analyticsZoneLabel(card = {}) {
-    const zoneId = card.zone_id ?? (card.kind === "zone" ? card.id : null);
-    if (zoneId === undefined || zoneId === null) return "";
-    const group = groupEntries.find(([id]) => Number(id) === Number(zoneId))?.[1] || {};
-    return zoneName(zoneId, group);
-  }
   function analyticsCardTitle(card = {}) {
-    return analyticsZoneLabel(card) || card.title || "Analytics";
+    return card.title || "Analytics";
   }
   function analyticsChartTitle(card = {}, chart = {}) {
-    const label = analyticsZoneLabel(card);
+    const label = analyticsCardTitle(card);
     if (!label) return chart.title;
     if (!chart.title || chart.title.includes(label)) return label || chart.title;
     return `${label} - ${chart.title}`;

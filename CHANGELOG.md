@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.9 - 2026-07-10
+
+- Surface adaptive analytics zone names from the backend UI contract instead of resolving them in the Svelte view.
+- Tighten adaptive analytics zone tiles to reduce vertical scrolling while keeping chart, badge, and model actions visible.
+- Refine the hybrid Damper Plan status surface with concise Control Temp and Setpoint fields.
+
 ## 0.8.8 - 2026-07-10
 
 - Add AT5 protocol bootstrap detection behind the protocol profile boundary while keeping upstream runtime and service layers protocol-agnostic.

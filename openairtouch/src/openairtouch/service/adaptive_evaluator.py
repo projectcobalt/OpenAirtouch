@@ -9,7 +9,7 @@ from ..session.queue import TransactionSpec
 from .adaptive_airtouch import translate_airtouch_snapshot
 from .adaptive_contracts import build_adaptive_input_contract
 from .adaptive_intent import _mode_intent_status, _thermal_intent_status
-from .adaptive_runtime_state import _ac_name, _indexed, _iter_acs
+from .adaptive_runtime_state import _ac_name, _indexed, _iter_acs, _optional_int
 from .adaptive_signals import (
     _ac_telemetry_signal,
     _ac_telemetry_status,
@@ -73,6 +73,7 @@ class AdaptiveEvaluatorMixin:
         status["ac_telemetry"] = _ac_telemetry_status(telemetry_signal)
         if telemetry_signal.error is not None:
             status["errors"].append(f"AC telemetry: {telemetry_signal.error}")
+        status["zone_names"] = _zone_names_from_state(state)
         if outside is None:
             status["note"] = "Outside temperature is not available"
             specs = self._restore_all(state, status, now) if self.config.mode != "off" else []
@@ -152,6 +153,21 @@ def runtime_control_status(runtime_snapshot: dict[str, Any]) -> dict[str, Any]:
         "connected": connected,
         "reason": None if connected else "Runtime Is Not Connected To The Mainboard",
     }
+
+
+def _zone_names_from_state(state: dict[str, Any]) -> dict[str, str]:
+    groups = state.get("groups") or state.get("active_groups") or {}
+    if not isinstance(groups, dict):
+        return {}
+    names: dict[str, str] = {}
+    for key, group in groups.items():
+        group_id = _optional_int(key)
+        if group_id is None or not isinstance(group, dict):
+            continue
+        name = group.get("name") or (group.get("name_record") or {}).get("name")
+        if isinstance(name, str) and name.strip():
+            names[str(group_id)] = name.strip()
+    return names
 
 
 def compressor_groups_from_zone_map(state: dict[str, Any]) -> tuple[tuple[int, ...], ...]:

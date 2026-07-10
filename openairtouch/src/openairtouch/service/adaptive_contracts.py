@@ -178,6 +178,7 @@ def _hybrid_surface(evaluation: dict[str, Any], strategy: str) -> dict[str, Any]
     mpc = _dict(evaluation.get("mpc"))
     dampers = _dict(hybrid.get("damper_percentages"))
     control_temperature = _first_number(hybrid.get("control_temperature"), _first_series_value(mpc, "control_temperature"))
+    target = _first_number(mpc.get("target"), evaluation.get("target"), _first_series_value(mpc, "target"))
     headline = "Damper Plan" if strategy == "hybrid" else "Hybrid Standby"
     if hybrid.get("touchpad_temperature_note"):
         detail = str(hybrid.get("touchpad_temperature_note"))
@@ -190,9 +191,9 @@ def _hybrid_surface(evaluation: dict[str, Any], strategy: str) -> dict[str, Any]
         "detail": detail,
         "state": "planned" if dampers else "idle",
         "fields": [
-            _temperature_field("Control Temperature", control_temperature),
+            _temperature_field("Control Temp", control_temperature),
+            _temperature_field("Setpoint", target),
             _text_field("Zone Airflow", _damper_text(dampers) if dampers else "-", raw=dampers),
-            _text_field("Touchpad Sensor", _touchpad_sensor_text(hybrid), raw=hybrid.get("touchpad_sensor")),
             _text_field("Strategy", _title(strategy), raw=strategy),
         ],
     }
@@ -276,6 +277,7 @@ def _analytics(status: dict[str, Any], commands: dict[str, Any], evaluation: dic
     zones = _dict(learning.get("zones"))
     history_by_zone = _dict(learning.get("analytics"))
     forecasts_by_zone = _dict(learning.get("forecasts"))
+    zone_names = _dict(status.get("zone_names"))
     active_groups = _id_set(commands.get("active_groups"))
     active_dampers = _id_set(commands.get("active_dampers"))
     zone_ids = _sorted_ids(set(zones) | set(history_by_zone) | set(forecasts_by_zone) | active_groups | active_dampers)
@@ -293,6 +295,7 @@ def _analytics(status: dict[str, Any], commands: dict[str, Any], evaluation: dic
                 active_dampers,
                 evaluation,
                 strategy,
+                zone_names,
             )
             for zone_id in zone_ids
         ]
@@ -308,6 +311,7 @@ def _analytics_zone(
     active_dampers: set[int],
     evaluation: dict[str, Any],
     strategy: str,
+    zone_names: dict[str, Any],
 ) -> dict[str, Any]:
     flags: list[str] = []
     if zone_id in active_groups:
@@ -318,11 +322,12 @@ def _analytics_zone(
         flags.append("Ready")
     if zone.get("learn") is True:
         flags.append("Learning")
+    title = _zone_title(zone_id, zone_names)
     return {
         "id": zone_id,
         "kind": "zone",
         "zone_id": zone_id,
-        "title": f"Zone {zone_id + 1}",
+        "title": title,
         "state": _analytics_zone_state(zone_id, zone, active_groups, active_dampers),
         "ready": zone.get("mpc_ready") is True,
         "learning": zone.get("learn") is True,
@@ -363,6 +368,13 @@ def _analytics_zone_state(zone_id: int, zone: dict[str, Any], active_groups: set
     if zone_id in active_groups:
         return "Control Zone"
     return "No Temperature Sensor"
+
+
+def _zone_title(zone_id: int, zone_names: dict[str, Any]) -> str:
+    name = zone_names.get(str(zone_id), zone_names.get(zone_id))
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return f"Zone {zone_id + 1}"
 
 
 def _analytics_chart(zone_id: int, history: list[Any], forecast: list[Any], evaluation: dict[str, Any], strategy: str) -> dict[str, Any]:
