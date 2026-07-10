@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.10 - 2026-07-10
+
+- Refine adaptive UI contract analytics with separate current, forecast, and control status surfaces for the frontend.
+- Restore the adaptive analytics model badge layout while keeping zone names and analytics values contract-driven from the backend.
+- Improve adaptive analytics chart rendering by respecting backend meaningful/no-plan state and normalizing mixed history/forecast chart axes.
+
 ## 0.8.9 - 2026-07-10
 
 - Surface adaptive analytics zone names from the backend UI contract instead of resolving them in the Svelte view.
