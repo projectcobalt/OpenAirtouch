@@ -88,8 +88,19 @@
   }
   function analyticsFlags(card = {}) {
     const state = String(card.state || "").toLowerCase();
-    return (Array.isArray(card.flags) ? card.flags : []).filter((flag) => String(flag || "").toLowerCase() !== state);
+    return (Array.isArray(card.flags) ? card.flags : []).filter((flag) => {
+      const normalized = String(flag || "").toLowerCase();
+      return normalized !== state && normalized !== "ready" && normalized !== "learning";
+    });
   }
+  function analyticsFacts(card = {}) {
+    const facts = Array.isArray(card.facts) ? card.facts.filter((fact) => fact?.value && fact.value !== "-") : [];
+    return facts.length ? facts : (Array.isArray(card.badges) ? card.badges.slice(0, 4) : []);
+  }
+  function analyticsSummary(card = {}, chart = {}) {
+    return card.summary?.detail || chart.summary || chart.empty_reason || "";
+  }
+  const chartIsUseful = (card = {}, chart = {}) => card.chart?.meaningful !== false && chart.hasData;
 
   $: uiSummary = adaptiveUi.summary || {};
   $: uiSurfaces = adaptiveUi.surfaces || {};
@@ -134,8 +145,8 @@
         <div class="pill-row-inline">
           <span>{title(activeMode)}</span>
           <span>{title(activeStrategy)}</span>
-          <span>{title(uiSummary.intent)}</span>
-          <span>{title(uiSummary.authority)}</span>
+          <span>{uiSummary.forecast?.headline || title(uiSummary.intent)}</span>
+          <span>{uiSummary.control?.headline || title(uiSummary.authority)}</span>
         </div>
       </div>
       <div class="adaptive-surface-grid">
@@ -232,7 +243,9 @@
       {#each analyticsCards as card}
         {@const zoneId = card.zone_id}
         {@const chart = analyticsChartData(card.chart)}
-        <article class="summary-card analytics-row" class:ready={card.ready} class:learning={card.learning} data-analytics-kind={card.kind}>
+        {@const facts = analyticsFacts(card)}
+        {@const showChart = chartIsUseful(card, chart)}
+        <article class="summary-card analytics-row" class:ready={card.ready} class:learning={card.learning} class:no-chart={!showChart} data-analytics-kind={card.kind}>
           <div class="analytics-row-status">
             <div>
               <div class="card-title">{analyticsCardTitle(card)}</div>
@@ -244,26 +257,29 @@
               {/each}
             </div>
           </div>
-          <div class="analytics-sparkline">
-            <svg class="temp-line" viewBox="0 0 160 44" preserveAspectRatio="none" aria-hidden="true">
-              <line class="axis" x1="0" y1="28" x2="160" y2="28"></line>
-              {#each chart.bands as band}
-                <rect class="chart-band" x="0" y={band.y} width="160" height={band.height}></rect>
-              {/each}
-              {#each chart.windows as window}
-                <rect class="chart-window" x={window.x} y="5" width={window.width} height="35"></rect>
-              {/each}
-              {#each chart.linePaths as line}
-                <path class={lineClass(line.kind)} d={line.path}></path>
-              {/each}
-            </svg>
-            <div class="analytics-sparkline-meta"><span>{analyticsChartTitle(card, chart)}</span><span>{chart.hasData ? chart.summary : "No chart data"}</span></div>
-          </div>
-          <div class="model-badge-grid">
-            {#each card.badges.slice(0, 6) as badge}
+          <div class="model-badge-grid analytics-facts">
+            {#each facts as badge}
               <span class="model-badge"><b>{badge.label}</b>{badge.value}</span>
             {/each}
           </div>
+          <div class="analytics-plan-summary">{analyticsSummary(card, chart)}</div>
+          {#if showChart}
+            <div class="analytics-sparkline">
+              <svg class="temp-line" viewBox="0 0 160 44" preserveAspectRatio="none" aria-hidden="true">
+                <line class="axis" x1="0" y1="28" x2="160" y2="28"></line>
+                {#each chart.bands as band}
+                  <rect class="chart-band" x="0" y={band.y} width="160" height={band.height}></rect>
+                {/each}
+                {#each chart.windows as window}
+                  <rect class="chart-window" x={window.x} y="5" width={window.width} height="35"></rect>
+                {/each}
+                {#each chart.linePaths as line}
+                  <path class={lineClass(line.kind)} d={line.path}></path>
+                {/each}
+              </svg>
+              <div class="analytics-sparkline-meta"><span>{analyticsChartTitle(card, chart)}</span><span>{chart.summary}</span></div>
+            </div>
+          {/if}
           {#if zoneId !== undefined && zoneId !== null}
             <div class="service-actions">
               <button type="button" disabled={pendingKey === `adaptive-model-accelerate_zone-${zoneId}`} on:click={() => onModelAction("accelerate_zone", Number(zoneId))}>{card.accelerated_learning ? "Normal" : "Fast"}</button>

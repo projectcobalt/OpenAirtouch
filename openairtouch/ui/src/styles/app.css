@@ -1927,7 +1927,10 @@
 
   .analytics-row {
     min-height: 0;
-    grid-template-columns: minmax(92px, .65fr) minmax(0, 1.25fr) minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) minmax(150px, .8fr) max-content;
+    grid-template-areas:
+      "status facts chart actions"
+      "status summary chart actions";
     align-items: center;
     align-content: center;
     gap: 6px;
@@ -1943,16 +1946,50 @@
   }
 
   .analytics-row[data-analytics-kind="environment"] {
-    grid-template-columns: minmax(110px, .7fr) minmax(0, 1.35fr) minmax(0, .9fr);
+    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) minmax(150px, .8fr);
+    grid-template-areas:
+      "status facts chart"
+      "status summary chart";
+  }
+
+  .analytics-row.no-chart {
+    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr) max-content;
+    grid-template-areas:
+      "status facts actions"
+      "status summary actions";
+  }
+
+  .analytics-row.no-chart[data-analytics-kind="environment"] {
+    grid-template-columns: minmax(120px, .75fr) minmax(0, 1.35fr);
+    grid-template-areas:
+      "status facts"
+      "status summary";
   }
 
   .analytics-row-status {
+    grid-area: status;
     display: grid;
     gap: 3px;
     min-width: 0;
   }
 
+  .analytics-facts {
+    grid-area: facts;
+  }
+
+  .analytics-plan-summary {
+    grid-area: summary;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.7rem;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .analytics-sparkline {
+    grid-area: chart;
     display: grid;
     gap: 2px;
     min-width: 0;
@@ -2066,6 +2103,7 @@
   }
 
   .analytics-row .service-actions {
+    grid-area: actions;
     margin-top: 0;
     flex-wrap: nowrap;
     gap: 4px;
@@ -2094,7 +2132,7 @@
   }
 
   .analytics-row .model-badge-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 3px;
   }
 
@@ -2110,18 +2148,43 @@
 
   @media (max-width: 900px) {
     .analytics-row {
-      grid-template-columns: minmax(96px, .8fr) minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(110px, .8fr) minmax(0, 1fr) minmax(130px, .8fr);
+      grid-template-areas:
+        "status facts chart"
+        "summary summary actions";
     }
 
     .analytics-row .service-actions {
-      grid-column: 1 / -1;
       justify-content: flex-end;
+    }
+
+    .analytics-row.no-chart {
+      grid-template-columns: minmax(110px, .8fr) minmax(0, 1fr);
+      grid-template-areas:
+        "status facts"
+        "summary actions";
     }
   }
 
   @media (max-width: 760px) {
     .analytics-row {
       grid-template-columns: 1fr;
+      grid-template-areas:
+        "status"
+        "facts"
+        "summary"
+        "chart"
+        "actions";
+    }
+
+    .analytics-row.no-chart,
+    .analytics-row.no-chart[data-analytics-kind="environment"] {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "status"
+        "facts"
+        "summary"
+        "actions";
     }
 
     .model-badge-grid {

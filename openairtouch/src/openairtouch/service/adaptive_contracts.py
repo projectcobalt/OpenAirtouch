@@ -90,7 +90,7 @@ def build_adaptive_ui_contract(status: dict[str, Any]) -> dict[str, Any]:
     strategy = str(config.get("control_strategy") or "weather")
     intent = _first_dict(status.get("intents"))
     evaluation = _evaluation_for_intent(status.get("evaluations"), intent)
-    summary = _summary(status, intent, mode, strategy)
+    summary = _summary(status, intent, evaluation, mode, strategy)
     surfaces = {
         "environment": _environment_surface(status, evaluation),
         "zone": _zone_surface(status, evaluation, intent),
@@ -112,14 +112,20 @@ def build_adaptive_ui_contract(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _summary(status: dict[str, Any], intent: dict[str, Any], mode: str, strategy: str) -> dict[str, Any]:
+def _summary(status: dict[str, Any], intent: dict[str, Any], evaluation: dict[str, Any], mode: str, strategy: str) -> dict[str, Any]:
     note = status.get("note")
-    headline = str(note or intent.get("headline") or ("Adaptive Control Is Off" if mode == "off" else "Adaptive Ready"))
-    detail = str(intent.get("summary") or note or _first_text(status.get("recommendations")) or "No adaptive recommendation is active.")
+    current = _current_summary(evaluation, mode, strategy)
+    forecast = _forecast_summary(evaluation, intent)
+    control = _control_summary(status, intent, mode)
+    headline = str(note or current.get("headline") or intent.get("headline") or ("Adaptive Control Is Off" if mode == "off" else "Adaptive Ready"))
+    detail = str(note or current.get("detail") or forecast.get("detail") or _first_text(status.get("recommendations")) or "No adaptive recommendation is active.")
     authority = str(intent.get("authority") or ("off" if mode == "off" else "insight" if mode == "recommend" else "control"))
     return {
         "headline": headline,
         "detail": detail,
+        "current": current,
+        "forecast": forecast,
+        "control": control,
         "authority": authority,
         "mode": mode,
         "strategy": strategy,
@@ -150,6 +156,65 @@ def _environment_surface(status: dict[str, Any], evaluation: dict[str, Any]) -> 
     }
 
 
+def _current_summary(evaluation: dict[str, Any], mode: str, strategy: str) -> dict[str, Any]:
+    if mode == "off":
+        return {"headline": "Adaptive Off", "detail": "No adaptive plan is active.", "state": "off"}
+    if strategy in {"zone", "hybrid"}:
+        zone_state = _zone_call_summary(_zone_call_state(evaluation))
+        if zone_state["state"] != "unknown":
+            return zone_state
+    mpc = _dict(evaluation.get("mpc"))
+    action = str(mpc.get("action") or "idle")
+    if action == "idle":
+        return {"headline": "Holding Target", "detail": "No immediate adaptive action is planned.", "state": "idle"}
+    return {"headline": "Plan Available", "detail": _plan_action_text(action), "state": action}
+
+
+def _forecast_summary(evaluation: dict[str, Any], intent: dict[str, Any]) -> dict[str, Any]:
+    mpc = _dict(evaluation.get("mpc"))
+    runtime = _dict(mpc.get("runtime_forecast"))
+    action = str(mpc.get("action") or intent.get("intent") or "monitor")
+    target = _first_number(intent.get("recommended_target"), mpc.get("target"), evaluation.get("target"))
+    runtime_hours = _first_number(intent.get("runtime_hours"), runtime.get("runtime_hours"), mpc.get("projected_runtime_hours"))
+    detail_parts = []
+    if target is not None:
+        detail_parts.append(f"Setpoint {_temp_text(target)}")
+    if runtime_hours is not None:
+        detail_parts.append(_duration_text(runtime_hours))
+    return {
+        "headline": _plan_action_text(action),
+        "detail": " / ".join(detail_parts) if detail_parts else "No forecast plan.",
+        "state": action,
+    }
+
+
+def _control_summary(status: dict[str, Any], intent: dict[str, Any], mode: str) -> dict[str, Any]:
+    active_ac = _count(status.get("active_ac"))
+    active_groups = _count(status.get("active_groups"))
+    active_dampers = _count(status.get("active_dampers"))
+    active_restore = _count(status.get("active_restore"))
+    if mode == "off":
+        label = "Off"
+    elif active_ac or active_groups or active_dampers:
+        parts = []
+        if active_ac:
+            parts.append("AC")
+        if active_groups:
+            parts.append("Zones")
+        if active_dampers:
+            parts.append("Dampers")
+        label = ", ".join(parts)
+    elif active_restore:
+        label = "Restoring"
+    else:
+        label = "Idle"
+    return {
+        "headline": label,
+        "detail": _title(intent.get("authority") or ("off" if mode == "off" else "insight" if mode == "recommend" else "control")),
+        "state": label.lower().replace(", ", "_").replace(" ", "_"),
+    }
+
+
 def _zone_surface(status: dict[str, Any], evaluation: dict[str, Any], intent: dict[str, Any]) -> dict[str, Any]:
     mpc = _dict(evaluation.get("mpc"))
     learning = _dict(status.get("learning"))
@@ -158,17 +223,20 @@ def _zone_surface(status: dict[str, Any], evaluation: dict[str, Any], intent: di
     learning_count = sum(1 for zone in zones.values() if isinstance(zone, dict) and zone.get("learn") is True)
     target = _first_number(intent.get("recommended_target"), mpc.get("target"), evaluation.get("target"))
     runtime = _first_number(intent.get("runtime_hours"), _dict(mpc.get("runtime_forecast")).get("runtime_hours"), mpc.get("projected_runtime_hours"))
-    headline = str(intent.get("headline") or ("Zone Models Ready" if ready else "Waiting For Zones"))
-    detail = str(intent.get("summary") or mpc.get("reason") or _first_text(status.get("recommendations")) or "Zone model status is available.")
+    zone_state = _zone_call_summary(_zone_call_state(evaluation))
+    action = str(mpc.get("action") or intent.get("intent") or "monitor")
+    headline = zone_state["headline"] if zone_state["state"] != "unknown" else ("Zone Models Ready" if ready else "Waiting For Zones")
+    detail = zone_state["detail"] if zone_state["state"] != "unknown" else "Zone model status is available."
     return {
         "headline": headline,
         "detail": detail,
-        "state": intent.get("intent") or "monitor",
+        "state": zone_state["state"] if zone_state["state"] != "unknown" else intent.get("intent") or "monitor",
         "fields": [
-            _temperature_field("Target", target),
-            _hours_field("Expected Runtime", runtime),
+            _temperature_field("Setpoint", target),
+            _text_field("Demand", zone_state["headline"], raw=zone_state.get("counts")),
+            _text_field("Plan", _plan_action_text(action), raw=action),
+            _text_field("Run Time", _duration_text(runtime), raw=runtime, unit="h"),
             _text_field("Learning", f"{ready} ready / {learning_count} learning", raw={"ready": ready, "learning": learning_count}),
-            _text_field("Action", _title(mpc.get("action") or intent.get("intent") or "monitor"), raw=mpc.get("action") or intent.get("intent")),
         ],
     }
 
@@ -179,6 +247,7 @@ def _hybrid_surface(evaluation: dict[str, Any], strategy: str) -> dict[str, Any]
     dampers = _dict(hybrid.get("damper_percentages"))
     control_temperature = _first_number(hybrid.get("control_temperature"), _first_series_value(mpc, "control_temperature"))
     target = _first_number(mpc.get("target"), evaluation.get("target"), _first_series_value(mpc, "target"))
+    action = str(mpc.get("action") or "idle")
     headline = "Damper Plan" if strategy == "hybrid" else "Hybrid Standby"
     if hybrid.get("touchpad_temperature_note"):
         detail = str(hybrid.get("touchpad_temperature_note"))
@@ -194,7 +263,7 @@ def _hybrid_surface(evaluation: dict[str, Any], strategy: str) -> dict[str, Any]
             _temperature_field("Control Temp", control_temperature),
             _temperature_field("Setpoint", target),
             _text_field("Zone Airflow", _damper_text(dampers) if dampers else "-", raw=dampers),
-            _text_field("Strategy", _title(strategy), raw=strategy),
+            _text_field("Plan", _plan_action_text(action), raw=action),
         ],
     }
 
@@ -266,9 +335,9 @@ def _metrics(
     return [
         _text_field("Authority", _title(summary.get("authority")), raw=summary.get("authority")),
         _text_field("Learning", _title(learning_reason) if learning_reason else learning_field.get("value", "-"), raw=learning_reason or learning_field.get("raw")),
-        _temperature_field("Control Temperature", plan.get("control_temperature")),
+        _temperature_field("Control Temp", plan.get("control_temperature")),
         _text_field("Control", f"{active_control_count} active changes" if active_control_count else "Idle", raw=active_control_count),
-        _text_field("Ownership", summary.get("detail") or summary.get("reason") or "-", raw=summary.get("reason")),
+        _text_field("Ownership", _dict(summary.get("control")).get("headline") or "-", raw=summary.get("control")),
     ]
 
 
@@ -313,6 +382,10 @@ def _analytics_zone(
     strategy: str,
     zone_names: dict[str, Any],
 ) -> dict[str, Any]:
+    chart = _analytics_chart(zone_id, history, forecast, evaluation, strategy)
+    zone_calls = _zone_call_state(evaluation)
+    zone_call = _dict(zone_calls.get(str(zone_id), zone_calls.get(zone_id)))
+    summary = _analytics_zone_summary(zone_id, zone_call, chart, evaluation, strategy)
     flags: list[str] = []
     if zone_id in active_groups:
         flags.append("Control")
@@ -328,13 +401,15 @@ def _analytics_zone(
         "kind": "zone",
         "zone_id": zone_id,
         "title": title,
-        "state": _analytics_zone_state(zone_id, zone, active_groups, active_dampers),
+        "state": summary["headline"] if summary.get("state") not in {"unknown", None} else _analytics_zone_state(zone_id, zone, active_groups, active_dampers),
         "ready": zone.get("mpc_ready") is True,
         "learning": zone.get("learn") is True,
         "accelerated_learning": zone.get("accelerated_learning") is True,
         "flags": flags,
+        "summary": summary,
+        "facts": _analytics_zone_facts(zone_id, zone_call, evaluation, strategy),
         "badges": _model_badges(zone),
-        "chart": _analytics_chart(zone_id, history, forecast, evaluation, strategy),
+        "chart": chart,
     }
 
 
@@ -368,6 +443,135 @@ def _analytics_zone_state(zone_id: int, zone: dict[str, Any], active_groups: set
     if zone_id in active_groups:
         return "Control Zone"
     return "No Temperature Sensor"
+
+
+def _zone_call_state(evaluation: dict[str, Any]) -> dict[str, Any]:
+    calls = _dict(evaluation.get("zone_call_state"))
+    if calls:
+        return calls
+    mpc = _dict(evaluation.get("mpc"))
+    runtime = _dict(mpc.get("runtime_forecast"))
+    quality = _dict(runtime.get("quality"))
+    input_quality = _dict(quality.get("input_quality"))
+    return _dict(input_quality.get("airtouch_zone_calls"))
+
+
+def _zone_call_summary(calls: dict[str, Any]) -> dict[str, Any]:
+    if not calls:
+        return {"headline": "Zone Demand Unknown", "detail": "No zone call state is available.", "state": "unknown", "counts": {}}
+    counts: dict[str, int] = {}
+    for call in calls.values():
+        state = str(_dict(call).get("state") or "unknown")
+        counts[state] = counts.get(state, 0) + 1
+    calling = counts.get("calling", 0)
+    waiting = counts.get("waiting_for_call_threshold", 0)
+    satisfied = counts.get("satisfied_idle", 0)
+    off = counts.get("participating_off", 0)
+    detail = _zone_call_counts_text(counts)
+    if calling:
+        return {"headline": "Zone Calling", "detail": detail, "state": "calling", "counts": counts}
+    if waiting:
+        return {"headline": "Waiting For Threshold", "detail": detail, "state": "waiting", "counts": counts}
+    if satisfied:
+        return {"headline": "Zones Satisfied", "detail": detail, "state": "satisfied", "counts": counts}
+    if off and off == sum(counts.values()):
+        return {"headline": "Zones Off", "detail": detail, "state": "off", "counts": counts}
+    return {"headline": "Zone Demand Unknown", "detail": detail, "state": "unknown", "counts": counts}
+
+
+def _zone_call_counts_text(counts: dict[str, int]) -> str:
+    parts = []
+    labels = {
+        "calling": "calling",
+        "waiting_for_call_threshold": "waiting",
+        "satisfied_idle": "satisfied",
+        "participating_off": "off",
+        "unknown": "unknown",
+    }
+    for state, label in labels.items():
+        count = counts.get(state, 0)
+        if count:
+            parts.append(f"{count} {label}")
+    return " / ".join(parts) if parts else "No zone call state is available."
+
+
+def _zone_call_label(value: Any) -> str:
+    state = str(value or "")
+    labels = {
+        "calling": "Calling",
+        "waiting_for_call_threshold": "Waiting",
+        "satisfied_idle": "Satisfied",
+        "participating_off": "Off",
+    }
+    return labels.get(state, _title(state or "unknown"))
+
+
+def _plan_action_text(value: Any) -> str:
+    action = str(value or "monitor")
+    labels = {
+        "heat": "Heat Planned",
+        "heating": "Heat Planned",
+        "raise_setpoint": "Heat Planned",
+        "cool": "Cool Planned",
+        "cooling": "Cool Planned",
+        "lower_setpoint": "Cool Planned",
+        "idle": "Hold",
+        "hold": "Hold",
+        "monitor": "Monitor",
+        "turn_off": "Pause AC",
+        "off": "Pause AC",
+        "dehumidify": "Dry Recommended",
+        "dry": "Dry Recommended",
+        "fan": "Fresh Air",
+        "ventilate": "Fresh Air",
+        "learning": "Learning",
+    }
+    return labels.get(action, _title(action))
+
+
+def _duration_text(value: Any) -> str:
+    number = _first_number(value)
+    if number is None:
+        return "-"
+    if number < 0.05:
+        return "0 h"
+    return f"{number:.1f} h" if number < 10 else f"{number:.0f} h"
+
+
+def _analytics_zone_summary(zone_id: int, zone_call: dict[str, Any], chart: dict[str, Any], evaluation: dict[str, Any], strategy: str) -> dict[str, Any]:
+    call_state = str(zone_call.get("state") or "")
+    if call_state:
+        call = _zone_call_summary({str(zone_id): zone_call})
+        return {"headline": call["headline"], "detail": call["detail"], "state": call["state"]}
+    mpc = _dict(evaluation.get("mpc"))
+    if not mpc:
+        return {"headline": "Zone Demand Unknown", "detail": chart.get("summary") or "No zone call state is available.", "state": "unknown"}
+    return {
+        "headline": _plan_action_text(mpc.get("action") or "monitor"),
+        "detail": chart.get("summary") or ("Hybrid damper model" if strategy == "hybrid" else "Zone model"),
+        "state": str(mpc.get("action") or "monitor"),
+    }
+
+
+def _analytics_zone_facts(zone_id: int, zone_call: dict[str, Any], evaluation: dict[str, Any], strategy: str) -> list[dict[str, Any]]:
+    mpc = _dict(evaluation.get("mpc"))
+    runtime = _dict(mpc.get("runtime_forecast"))
+    hybrid = _dict(evaluation.get("hybrid"))
+    zone_power = _dict(mpc.get("zone_power_fractions"))
+    dampers = _dict(hybrid.get("damper_percentages"))
+    facts = [
+        _temperature_field("Temp", zone_call.get("temperature")),
+        _temperature_field("Setpoint", _first_number(zone_call.get("setpoint"), mpc.get("target"), evaluation.get("target"))),
+        _text_field("Demand", _zone_call_label(zone_call.get("state")), raw=zone_call.get("state")),
+    ]
+    if strategy == "hybrid":
+        facts.append(_percent_field("Damper", dampers.get(str(zone_id), dampers.get(zone_id))))
+    else:
+        facts.append(_percent_field("Power", _scale(zone_power.get(str(zone_id), zone_power.get(zone_id)), 100)))
+    runtime_minutes = _first_number(_dict(runtime.get("zone_runtime_minutes")).get(str(zone_id), _dict(runtime.get("zone_runtime_minutes")).get(zone_id)))
+    if runtime_minutes is not None:
+        facts.append(_text_field("Run", f"{runtime_minutes:.0f} min", raw=runtime_minutes, unit="min"))
+    return facts
 
 
 def _zone_title(zone_id: int, zone_names: dict[str, Any]) -> str:
@@ -466,6 +670,9 @@ def _chart(
     windows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     visible_lines = [line for line in lines if line["points"]]
+    values = [point["y"] for line in visible_lines for point in line.get("points", []) if _first_number(point.get("y")) is not None]
+    value_range = max(values) - min(values) if values else 0
+    has_data = sum(len(line["points"]) for line in visible_lines) >= 2
     return {
         "variant": variant,
         "title": title,
@@ -474,8 +681,10 @@ def _chart(
         "lines": visible_lines,
         "bands": bands,
         "windows": windows,
-        "has_data": sum(len(line["points"]) for line in visible_lines) >= 2,
-        "empty_reason": "No chart data" if sum(len(line["points"]) for line in visible_lines) < 2 else None,
+        "has_data": has_data,
+        "meaningful": has_data and (value_range >= 0.35 or bool(windows)),
+        "value_range": round(value_range, 2),
+        "empty_reason": "No chart data" if not has_data else None,
     }
 
 
@@ -623,8 +832,8 @@ def _hours_field(label: str, value: Any) -> dict[str, Any]:
     return _field(label, f"{number:.1f} h" if number < 10 else f"{number:.0f} h", raw=number, unit="h")
 
 
-def _text_field(label: str, value: Any, *, raw: Any = None) -> dict[str, Any]:
-    return _field(label, str(value if value is not None and value != "" else "-"), raw=value if raw is None else raw)
+def _text_field(label: str, value: Any, *, raw: Any = None, unit: str | None = None) -> dict[str, Any]:
+    return _field(label, str(value if value is not None and value != "" else "-"), raw=value if raw is None else raw, unit=unit)
 
 
 def _list(value: Any) -> list[Any]:

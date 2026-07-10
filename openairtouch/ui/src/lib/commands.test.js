@@ -88,5 +88,7 @@ test("adaptive analytics view reads zone names from the backend contract", async
   assert.match(source, /analyticsCardTitle\(card\)/);
   assert.match(source, /analyticsChartTitle\(card, chart\)/);
   assert.match(source, /function analyticsFlags/);
-  assert.match(source, /String\(flag \|\| ""\)\.toLowerCase\(\) !== state/);
+  assert.match(source, /normalized !== state/);
+  assert.match(source, /normalized !== "ready"/);
+  assert.match(source, /normalized !== "learning"/);
 });
